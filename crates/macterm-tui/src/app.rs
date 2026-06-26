@@ -72,6 +72,14 @@ pub struct App {
     pub file_tree_entries: Vec<(String, bool)>,
     /// Scrolling offset for the file tree
     pub file_tree_scroll: usize,
+    /// Search overlay (E1): whether search is active
+    pub show_search: bool,
+    /// Search query text
+    pub search_query: String,
+    /// Match positions in the active pane: vec of (row, col_start, col_end)
+    pub search_matches: Vec<(u16, u16, u16)>,
+    /// Index into search_matches for the currently highlighted match
+    pub search_match_index: usize,
 }
 
 impl App {
@@ -114,6 +122,10 @@ impl App {
                 tab_scroll_offset: 0,
                 file_tree_entries: Vec::new(),
                 file_tree_scroll: 0,
+                show_search: false,
+                search_query: String::new(),
+                search_matches: Vec::new(),
+                search_match_index: 0,
             },
             pty_tx,
         )
@@ -407,5 +419,72 @@ impl App {
                 self.set_status_message(format!("Unknown command: {}", cmd));
             }
         }
+    }
+
+    // ── Search overlay (E1) ──
+
+    /// Perform search in the active pane's screen content
+    pub fn perform_search(&mut self) {
+        self.search_matches.clear();
+        self.search_match_index = 0;
+        let query = self.search_query.trim();
+        if query.is_empty() {
+            return;
+        }
+        let active_pane = self.workspace.active_tab().active_pane();
+        if let Some(session) = self.sessions.get(&active_pane) {
+            if let Ok(parser) = session.parser.try_read() {
+                let screen = parser.screen();
+                let (rows, cols) = screen.size();
+                let query_lower = query.to_lowercase();
+                for row in 0..rows {
+                    let mut col = 0u16;
+                    while col < cols {
+                        if let Some(cell) = screen.cell(row, col) {
+                            let contents = cell.contents();
+                            // Simple substring search
+                            if contents.to_lowercase().contains(&query_lower) {
+                                let start = col;
+                                let end = col + contents.len() as u16;
+                                self.search_matches.push((row, start, end));
+                            }
+                        }
+                        col += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Move to the next search match
+    pub fn next_match(&mut self) {
+        if self.search_matches.is_empty() {
+            return;
+        }
+        self.search_match_index = (self.search_match_index + 1) % self.search_matches.len();
+    }
+
+    /// Move to the previous search match
+    pub fn prev_match(&mut self) {
+        if self.search_matches.is_empty() {
+            return;
+        }
+        self.search_match_index = if self.search_match_index == 0 {
+            self.search_matches.len() - 1
+        } else {
+            self.search_match_index - 1
+        };
+    }
+
+    /// Input a character into the search query
+    pub fn search_input(&mut self, c: char) {
+        self.search_query.push(c);
+        self.perform_search();
+    }
+
+    /// Backspace in the search query
+    pub fn search_backspace(&mut self) {
+        self.search_query.pop();
+        self.perform_search();
     }
 }

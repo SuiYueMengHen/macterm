@@ -164,7 +164,46 @@ fn handle_event(app: &mut App, event: &Event) -> Result<()> {
                 return Ok(());
             }
 
+            // Handle search overlay (E1)
+            if app.show_search {
+                match key.code {
+                    KeyCode::Esc => {
+                        app.show_search = false;
+                        app.search_query.clear();
+                        app.search_matches.clear();
+                    }
+                    KeyCode::Enter => {
+                        app.next_match();
+                    }
+                    KeyCode::Backspace => {
+                        app.search_backspace();
+                    }
+                    KeyCode::Tab => {
+                        if key.modifiers == KeyModifiers::SHIFT {
+                            app.prev_match();
+                        } else {
+                            app.next_match();
+                        }
+                    }
+                    KeyCode::Char(c) => {
+                        app.search_input(c);
+                    }
+                    _ => {}
+                }
+                return Ok(());
+            }
+
             match key.code {
+                // Search (find)
+                KeyCode::Char('s') if key.modifiers == KeyModifiers::ALT => {
+                    app.show_search = !app.show_search;
+                    if app.show_search {
+                        app.search_query.clear();
+                        app.search_matches.clear();
+                        app.search_match_index = 0;
+                    }
+                }
+
                 // Quit (with confirmation)
                 KeyCode::Char('q') if key.modifiers == KeyModifiers::CONTROL => {
                     app.confirm_action = ConfirmAction::Quit;
@@ -624,6 +663,45 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         frame.render_widget(Paragraph::new(input), palette_inner);
     }
 
+    // Search overlay (E1)
+    if app.show_search {
+        let search_area = Rect {
+            x: area.width / 4,
+            y: area.height.saturating_sub(3),
+            width: area.width / 2,
+            height: 3,
+        };
+
+        frame.render_widget(Clear, search_area);
+
+        let match_info = if app.search_matches.is_empty() {
+            if app.search_query.is_empty() {
+                String::new()
+            } else {
+                " 0/0 ".to_string()
+            }
+        } else {
+            format!(" {}/{} ", app.search_match_index + 1, app.search_matches.len())
+        };
+
+        let search_title = format!(" Find{}", match_info);
+        let search_block = Block::default()
+            .title(search_title.as_str())
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Rgb(100, 200, 255)))
+            .style(Style::default().bg(Color::Rgb(20, 25, 40)));
+
+        let display = if app.search_query.is_empty() {
+            " Type to search... "
+        } else {
+            &app.search_query
+        };
+
+        let inner = search_block.inner(search_area);
+        frame.render_widget(search_block, search_area);
+        frame.render_widget(Paragraph::new(display), inner);
+    }
+
     // Help overlay
     if app.show_help {
         let hdr = Style::default().fg(Color::Rgb(0, 180, 255)).add_modifier(Modifier::BOLD);
@@ -654,6 +732,7 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         sec!(" Interface ");
         row!(" Ctrl+P      ", "Command palette", "");
         row!(" Ctrl+F      ", "File tree     ", "toggle");
+        row!(" Alt+S       ", "Search        ", "find in pane");
         row!(" Ctrl+H      ", "Help          ", "this screen");
         row!(" Ctrl+Q      ", "Quit          ", "");
         rows.push(Line::from(""));
