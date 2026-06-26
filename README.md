@@ -14,11 +14,21 @@
 - **Split panes** — split horizontally (`Ctrl+D`) or vertically (`Ctrl+E`) into resizable panes
 - **Drag-to-resize** — click and drag split borders to resize panes in real-time
 - **Pane navigation** — `Ctrl+↑↓←→` to move focus between panes
-- **Branded header** — gradient "MACTERMINAL" logo with tab bar
+- **Branded header** — animated wave gradient "MACTERMINAL" logo with tab bar
+- **Tab scrolling** — `◀▶` arrows when tabs overflow, auto-scroll to active tab
+- **Pane title bar** — colored 1-line header inside each pane with `[N]` label
+- **Pane number overlays** — numbered `[1]` `[2]` labels in pane borders
+- **Focus breathing** — subtle brightness pulse on the active pane's content
+- **Glowing border** — sinusoidal cyan glow on the active pane border
+- **Rounded borders** — `╭─╮` style pane borders with `║═╬` double-line separators
+- **Search overlay** — `Alt+S` to find text in the active pane, Enter/Tab navigation
+- **Confirmation dialogs** — confirm before closing a pane or quitting
 - **Help overlay** — `Ctrl+H` shows all keybindings
 - **Command palette** — `Ctrl+P` for quick commands
-- **File tree sidebar** — `Ctrl+F` to toggle (`Ctrl+P → files` also works)
-- **Status bar** — tab count, pane count, status messages
+- **File tree sidebar** — `Ctrl+F` to toggle, reads live directory listing (sorted, dirs first)
+- **Tokyo Night theme** — calibrated ANSI color palette for cohesive dark look
+- **Status bar** — tab count, pane count, colored status messages with auto-fade
+- **Command exit notifications** — green ✓ for success, red ✗ for errors
 - **Async event loop** — 60fps rendering via `tokio::select!` — no input lag
 - **Proper terminal emulation** — vt100 parser with full ANSI/ECMA-48 support
 - **SIGWINCH propagation** — PTY sessions properly resize when the window changes
@@ -57,24 +67,32 @@ Options:
 ## Keybindings
 
 | Shortcut | Action |
-|---|---|
-| `Ctrl+Q` | Quit |
+|---|---|---|
+| `Ctrl+Q` | Quit (with confirmation) |
 | **Panes** | |
 | `Ctrl+D` | Split pane right (horizontal) |
 | `Ctrl+E` | Split pane down (vertical) |
-| `Ctrl+W` | Close active pane |
+| `Ctrl+W` | Close active pane (with confirmation) |
 | `Ctrl+↑↓←→` | Focus next/previous pane |
 | **Mouse** | |
 | Click pane | Focus pane |
 | Drag border | Resize split panes |
 | **Tabs** | |
-| `Ctrl+T` | New tab |
-| `Alt+←→` | Switch tab prev/next |
+| `Ctrl+T` / `Alt+T` | New tab |
+| `Alt+←→` | Switch tab prev/next (auto-scroll) |
 | `Alt+1-9` | Switch to tab by number |
 | **Interface** | |
 | `Ctrl+P` | Command palette |
 | `Ctrl+F` | File tree (toggle) |
+| `Alt+S` | Search in active pane |
 | `Ctrl+H` | Help overlay |
+| **Search** (when open) | |
+| `Enter` / `Tab` | Next match |
+| `Shift+Tab` | Previous match |
+| `Esc` | Close search |
+| **Confirm Dialog** (when open) | |
+| `Enter` / `Y` | Confirm action |
+| `Esc` / `N` / `Q` | Cancel |
 | **Shell Input** | |
 | `Ctrl+C` / `Ctrl+D` / etc. | Standard control codes sent to shell |
 | `Alt+letter` | Alt codes (ESC+letter) |
@@ -83,6 +101,57 @@ Options:
 ---
 
 ## Changelog
+
+### 0.2.1 — Search Overlay
+
+- **Search overlay (E1)**: `Alt+S` opens case-insensitive search in the active pane
+  - Real-time matching as you type with match counter (`3/42`)
+  - Enter/Tab to cycle forward, Shift+Tab to go backward
+  - Esc to close
+- Help overlay updated with new keybinding reference
+
+### 0.2.0 — UI Polish & Animations
+
+#### Animations (Phase 2)
+- **Wave gradient header (A1)**: per-character flowing color wave on "MACTERMINAL" brand
+- **Glowing border (B2)**: sinusoidal pulse on the active pane's border (cyan brightness oscillation)
+- **Focus breathing (C2)**: ±8 brightness modulation on the active pane's content cells
+
+#### UI Enhancements (Phase 1)
+- **Rounded borders**: pane borders use `╭╮╰╯` rounded corner glyphs (`symbols::border::ROUNDED`)
+- **Double-line separators**: `║` vertical and `═` horizontal split lines with `╬` cross-point detection
+- **Pane number overlays**: sequential `[N]` labels in each pane's border title
+- **Tab indicators**: `●`/`○` bullets, `▏` separators, `▔` underline on active tab
+- **Pane title bar (B5)**: colored 1-line header inside each pane showing `[N]` label
+
+#### Confirmation Dialogs (E4/E5)
+- **Close pane confirm**: when pressing `Ctrl+W` with multiple panes, shows confirmation dialog
+- **Quit confirm**: `Ctrl+Q` now shows confirmation before quitting
+- Styled overlay with `[Y]es  [N]o  [Esc]` buttons
+- Enter/Y to confirm, Esc/N/Q to cancel
+
+#### Command Exit Notifications (E3)
+- Colored exit code display: `✓ green` for exit code 0, `✗ red` for non-zero
+- Auto-fades after ~2 seconds
+- `StatusBar.message_color` infrastructure for per-message coloring
+
+#### Tokyo Night Color Calibration (F2)
+- OSC 10/11 sequences fed to vt100 parser set default fg `#a9b1d6` / bg `#1a1b26`
+- Full ANSI palette (colors 0–15) calibrated to Tokyo Night values
+- `render_screen()` resolves `Color::Default` to Tokyo Night colors instead of `Color::Reset`
+- Cohesive dark theme across all UI chrome and terminal content
+
+#### Tab Scrolling (A4)
+- `tab_scroll_offset` state tracks current scroll position
+- Auto-scroll on tab switch (`Alt+←→`, `Alt+1-9`, `Ctrl+T`)
+- `◀▶` arrow indicators when tabs are hidden off-screen
+- Works with the tab bar's proportional-width layout
+
+#### File Tree Improvements (D1)
+- Live `cwd` directory listing via `std::fs::read_dir`
+- Directories sorted first, then alphabetical
+- `📁` icon for directories, plain spacing for files
+- Scrolling support for long listings
 
 ### 0.1.0 (Initial Release)
 
