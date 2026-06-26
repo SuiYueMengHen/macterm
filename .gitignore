@@ -1,0 +1,30 @@
+# Rust build artifacts
+target/
+**/target/
+
+# Cargo lock (committed for binary applications)
+# Cargo.lock
+
+# IDE files
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+*.pem
+*.cert
+
+# OpenCode session tracking
+opencode.txt
+.omo/
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.*
