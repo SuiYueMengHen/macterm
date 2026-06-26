@@ -67,7 +67,7 @@ Options:
 ## Keybindings
 
 | Shortcut | Action |
-|---|---|---|
+|---|---|
 | `Ctrl+Q` | Quit (with confirmation) |
 | **Panes** | |
 | `Ctrl+D` | Split pane right (horizontal) |
@@ -101,6 +101,17 @@ Options:
 ---
 
 ## Changelog
+
+### 0.2.2 — README & Release Packaging
+
+- Full README overhaul: Features, Keybindings, and Changelog synchronized with all v0.2.x changes
+- Keybindings table: added Search overlay, Confirm Dialog, tab scrolling, pane close/quit confirm sections
+- Fixed table separator rendering bug (incorrect column count)
+- Release build: `cargo build --release` produces `target/release/macterm` (3.5M arm64 Mach-O)
+- Distribution package in `dist/`:
+  - `macterm` — standalone arm64 binary
+  - `install.sh` — one-command installer (`install -m 755` to `/usr/local/bin`)
+  - `macterm-aarch64-macos.tar.gz` — 1.4MB compressed distribution archive
 
 ### 0.2.1 — Search Overlay
 
