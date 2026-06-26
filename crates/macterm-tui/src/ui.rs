@@ -8,14 +8,14 @@ use crossterm::event::{
 use futures::StreamExt;
 use log::{info, trace};
 use ratatui::backend::CrosstermBackend;
-use ratatui::layout::Rect;
+use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use ratatui::Terminal;
 use tokio::sync::mpsc;
 
-use crate::app::{App, ResizeState};
+use crate::app::{App, ConfirmAction, ResizeState};
 use crate::widgets::header::{header_area, HeaderBar};
 use crate::widgets::pane_grid::PaneGrid;
 use crate::widgets::status_bar::{status_bar_area, StatusBar};
@@ -82,7 +82,15 @@ fn handle_pty_event(app: &mut App, event: &crate::pty::PtyEvent) {
         }
         crate::pty::PtyEvent::Exited(pane_id, code) => {
             info!("Pane {} exited with code {}", pane_id, code);
-            app.status_message = Some(format!("Pane {} exited ({})", pane_id, code));
+            let (symbol, color) = if *code == 0 {
+                ('✓', Color::Rgb(80, 220, 100))
+            } else {
+                ('✗', Color::Rgb(240, 80, 80))
+            };
+            app.set_status_message_colored(
+                format!("Pane {} {} ({})", pane_id, symbol, code),
+                color,
+            );
         }
     }
 }
@@ -92,6 +100,34 @@ fn handle_event(app: &mut App, event: &Event) -> Result<()> {
     match event {
         Event::Key(key) => {
             if key.kind != KeyEventKind::Press {
+                return Ok(());
+            }
+
+            // Handle confirmation dialog (E4/E5) — intercept all keys when dialog is open
+            if app.confirm_action != ConfirmAction::None {
+                match key.code {
+                    KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
+                        match app.confirm_action {
+                            ConfirmAction::ClosePane => {
+                                app.close_active_pane();
+                                app.set_status_message("Closed pane".to_string());
+                            }
+                            ConfirmAction::Quit => {
+                                app.running = false;
+                            }
+                            ConfirmAction::None => {}
+                        }
+                        app.confirm_action = ConfirmAction::None;
+                    }
+                    KeyCode::Esc
+                    | KeyCode::Char('n')
+                    | KeyCode::Char('N')
+                    | KeyCode::Char('q') => {
+                        app.confirm_action = ConfirmAction::None;
+                        app.set_status_message("Cancelled".to_string());
+                    }
+                    _ => {}
+                }
                 return Ok(());
             }
 
@@ -129,25 +165,29 @@ fn handle_event(app: &mut App, event: &Event) -> Result<()> {
             }
 
             match key.code {
-                // Quit
+                // Quit (with confirmation)
                 KeyCode::Char('q') if key.modifiers == KeyModifiers::CONTROL => {
-                    app.running = false;
+                    app.confirm_action = ConfirmAction::Quit;
                 }
 
                 // Split pane
                 KeyCode::Char('d') if key.modifiers == KeyModifiers::CONTROL => {
                     app.split_active_pane(macterm_core::SplitDirection::Horizontal);
-                    app.status_message = Some("Split right".to_string());
+                    app.set_status_message("Split right".to_string());
                 }
                 KeyCode::Char('e') if key.modifiers == KeyModifiers::CONTROL => {
                     app.split_active_pane(macterm_core::SplitDirection::Vertical);
-                    app.status_message = Some("Split down".to_string());
+                    app.set_status_message("Split down".to_string());
                 }
 
-                // Close pane
+                // Close pane (with confirmation)
                 KeyCode::Char('w') if key.modifiers == KeyModifiers::CONTROL => {
-                    app.close_active_pane();
-                    app.status_message = Some("Closed pane".to_string());
+                    if app.workspace.active_tab().pane_count() > 1 {
+                        app.confirm_action = ConfirmAction::ClosePane;
+                    } else {
+                        app.close_active_pane();
+                        app.set_status_message("Closed pane".to_string());
+                    }
                 }
 
                 // New tab
@@ -171,24 +211,28 @@ fn handle_event(app: &mut App, event: &Event) -> Result<()> {
                     }
                     // Immediately resize to actual pane dimensions
                     app.resize_active_panes();
+                    app.ensure_tab_visible();
 
-                    app.status_message = Some("New tab".to_string());
+                    app.set_status_message("New tab".to_string());
                 }
 
-                // Switch tabs
+                // Switch tabs (with auto-scroll to keep active tab visible)
                 KeyCode::Char(c @ '1'..='9') if key.modifiers == KeyModifiers::ALT => {
                     let idx = c.to_digit(10).unwrap_or(1) as usize - 1;
                     app.workspace.switch_to_tab(idx);
+                    app.ensure_tab_visible();
                     app.resize_active_panes();
                 }
 
-                // Next/prev tab
+                // Next/prev tab (with auto-scroll)
                 KeyCode::Right if key.modifiers == KeyModifiers::ALT => {
                     app.workspace.next_tab();
+                    app.ensure_tab_visible();
                     app.resize_active_panes();
                 }
                 KeyCode::Left if key.modifiers == KeyModifiers::ALT => {
                     app.workspace.prev_tab();
+                    app.ensure_tab_visible();
                     app.resize_active_panes();
                 }
 
@@ -215,6 +259,9 @@ fn handle_event(app: &mut App, event: &Event) -> Result<()> {
                 // Toggle file tree
                 KeyCode::Char('f') if key.modifiers == KeyModifiers::CONTROL => {
                     app.show_file_tree = !app.show_file_tree;
+                    if app.show_file_tree {
+                        app.refresh_file_tree();
+                    }
                 }
 
                 // Help overlay
@@ -414,7 +461,7 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
     // Header bar at top (brand + tabs)
     let head_area = header_area(area);
     frame.render_widget(
-        HeaderBar::new(&app.workspace, "0.1.0"),
+        HeaderBar::new(&app.workspace, "0.1.0", app.frame_count, app.tab_scroll_offset),
         head_area,
     );
 
@@ -430,7 +477,7 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         height: content_height,
     };
 
-    // File tree sidebar
+    // File tree sidebar (D1)
     if app.show_file_tree {
         let sidebar_area = Rect {
             x: 0,
@@ -439,13 +486,38 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
             height: content_height,
         };
 
+        let sidebar_bg = Color::Rgb(18, 22, 33);
         let sidebar_block = Block::default()
             .title(" Files ")
             .borders(Borders::RIGHT)
             .border_style(Style::default().fg(Color::Rgb(60, 65, 80)))
-            .style(Style::default().bg(Color::Rgb(18, 22, 33)));
+            .style(Style::default().bg(sidebar_bg));
 
+        let inner = sidebar_block.inner(sidebar_area);
         frame.render_widget(sidebar_block, sidebar_area);
+
+        // Render file tree entries
+        let max_rows = inner.height as usize;
+        let entries: Vec<ratatui::text::Span> = app.file_tree_entries
+            .iter()
+            .skip(app.file_tree_scroll)
+            .take(max_rows)
+            .map(|(name, is_dir)| {
+                let icon = if *is_dir { "📁 " } else { "  " };
+                let fg = if *is_dir { Color::Rgb(100, 180, 255) } else { Color::Rgb(180, 185, 200) };
+                ratatui::text::Span::styled(
+                    format!("{}{}", icon, name),
+                    Style::default().fg(fg).bg(sidebar_bg),
+                )
+            })
+            .collect();
+
+        if !entries.is_empty() {
+            let lines: Vec<ratatui::text::Line> = entries.into_iter()
+                .map(|s| ratatui::text::Line::from(s))
+                .collect();
+            frame.render_widget(Paragraph::new(ratatui::text::Text::from(lines)), inner);
+        }
     }
 
     // Extract resize_pane from resize state (before borrowing tab)
@@ -467,6 +539,13 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         .map(|(id, session)| (*id, session.parser.clone()))
         .collect();
 
+    let pane_ids_list = tab.pane_ids();
+    let pane_indices: std::collections::HashMap<_, _> = pane_ids_list
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (*id, i + 1))
+        .collect();
+
     let pane_grid = PaneGrid {
         root: &tab.root,
         active_pane: tab.active_pane(),
@@ -474,6 +553,8 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         area: content_area,
         focus_animation: None,
         resize_pane,
+        pane_indices: &pane_indices,
+        frame_count: app.frame_count,
     };
     frame.render_widget(pane_grid, content_area);
 
@@ -507,6 +588,7 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
                 pane_count: tab.pane_count(),
                 active_tab: app.workspace.active_tab,
                 message: msg,
+                message_color: app.status_message_color,
                 show_file_tree: app.show_file_tree,
                 version: "0.1.0",
             },
@@ -600,7 +682,65 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         frame.render_widget(block, ha);
         frame.render_widget(Paragraph::new(ratatui::text::Text::from(rows)), inner);
     }
+
+    // Confirm dialog overlay (E4/E5)
+    if app.confirm_action != ConfirmAction::None {
+        let (title, message) = match app.confirm_action {
+            ConfirmAction::ClosePane => (" Close Pane ", " Close this pane?"),
+            ConfirmAction::Quit => (" Quit macterm ", " Quit macterm?"),
+            ConfirmAction::None => unreachable!(),
+        };
+
+        let dlg_w = 36u16;
+        let dlg_h = 5u16;
+        let da = Rect {
+            x: (area.width.saturating_sub(dlg_w)) / 2,
+            y: (area.height.saturating_sub(dlg_h)) / 2,
+            width: dlg_w.min(area.width),
+            height: dlg_h.min(area.height),
+        };
+
+        frame.render_widget(Clear, da);
+        let block = Block::default()
+            .title(title)
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Rgb(240, 180, 50)))
+            .style(Style::default().bg(Color::Rgb(25, 20, 15)));
+        let inner = block.inner(da);
+        frame.render_widget(block, da);
+
+        let text = vec![
+            Line::from(Span::styled(
+                message,
+                Style::default().fg(Color::Rgb(220, 220, 200)),
+            )),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled(
+                    " [Y]es  ",
+                    Style::default()
+                        .fg(Color::Rgb(80, 220, 100))
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    "[N]o  ",
+                    Style::default()
+                        .fg(Color::Rgb(200, 200, 220))
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    "[Esc] ",
+                    Style::default()
+                        .fg(Color::Rgb(200, 100, 100))
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]),
+        ];
+        frame.render_widget(Paragraph::new(ratatui::text::Text::from(text)).alignment(Alignment::Center), inner);
+    }
 }
+
+// Helper for pane rects
 
 /// Find which split border (if any) is at the given terminal position.
 /// Returns `(direction, split_area, ratio, child_pane_id)` where `child_pane_id`

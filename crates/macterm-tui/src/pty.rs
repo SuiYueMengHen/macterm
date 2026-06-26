@@ -60,6 +60,33 @@ impl PtySession {
 
         let parser = Arc::new(RwLock::new(vt100::Parser::new(rows, cols, 10000)));
 
+        // Apply Tokyo Night color scheme (F2) — feed OSC sequences to the parser
+        // Sets default fg/bg and ANSI color palette 0-15 for a cohesive theme.
+        if let Ok(mut p) = parser.write() {
+            // OSC 10/11: default foreground/background
+            p.process(b"\x1b]10;rgb:a9a9/b1b1/d6d6\x1b\\"); // fg: #a9b1d6
+            p.process(b"\x1b]11;rgb:1a1b/1b1b/2626\x1b\\"); // bg: #1a1b26
+            // OSC 4: ANSI color palette (Tokyo Night)
+            // Black / Dark colors
+            p.process(b"\x1b]4;0;rgb:3232/3232/3f3f\x1b\\");   // black:   #32323f
+            p.process(b"\x1b]4;1;rgb:dbdb/4b4b/4b4b\x1b\\");   // red:     #db4b4b
+            p.process(b"\x1b]4;2;rgb:9d9d/cccc/6565\x1b\\");   // green:   #9dcc65
+            p.process(b"\x1b]4;3;rgb:ecec/bfbf/7f7f\x1b\\");   // yellow:  #ecbf7f
+            p.process(b"\x1b]4;4;rgb:7a7a/aaaa/dada\x1b\\");   // blue:    #7aaada
+            p.process(b"\x1b]4;5;rgb:b2b2/8c8c/eded\x1b\\");   // magenta: #b28ced
+            p.process(b"\x1b]4;6;rgb:5454/c8c8/aaaa\x1b\\");   // cyan:    #54c8aa
+            p.process(b"\x1b]4;7;rgb:c0c0/caca/f5f5\x1b\\");   // white:   #c0caf5
+            // Bright colors
+            p.process(b"\x1b]4;8;rgb:5454/5454/6666\x1b\\");   // brblack: #545466
+            p.process(b"\x1b]4;9;rgb:ffff/7575/7575\x1b\\");   // brred:   #ff7575
+            p.process(b"\x1b]4;10;rgb:c3c3/e8e8/8888\x1b\\");  // brgreen: #c3e888
+            p.process(b"\x1b]4;11;rgb:ffff/cccc/9999\x1b\\");  // bryellow:#ffcc99
+            p.process(b"\x1b]4;12;rgb:7a7a/bbbb/dada\x1b\\");  // brblue:  #7abbda
+            p.process(b"\x1b]4;13;rgb:bbbb/9c9c/f0f0\x1b\\");  // brmagenta:#bb9cf0
+            p.process(b"\x1b]4;14;rgb:6c6c/dcdc/bfbf\x1b\\");  // brcyan:  #6cdcbf
+            p.process(b"\x1b]4;15;rgb:d4d4/d5d5/e0e0\x1b\\");  // brwhite: #d4d5e0
+        }
+
         let parser_clone = parser.clone();
         let pid = pane_id;
         let tx = parser_tx.clone();

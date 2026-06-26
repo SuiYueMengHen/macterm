@@ -3,7 +3,16 @@ use std::collections::HashMap;
 use crate::pty::{PtyEvent, PtySession};
 use macterm_core::*;
 use ratatui::layout::Rect;
+use ratatui::style::Color;
 use tokio::sync::mpsc;
+
+/// Pending confirmation action (for close pane / quit confirmation dialogs)
+#[derive(Debug, Clone, PartialEq)]
+pub enum ConfirmAction {
+    None,
+    ClosePane,
+    Quit,
+}
 
 /// Tracks an active drag-to-resize operation on a split border
 #[derive(Debug, Clone, PartialEq)]
@@ -41,8 +50,12 @@ pub struct App {
     pub show_command_palette: bool,
     /// Input buffer for command palette
     pub command_input: String,
-    /// Status message
+    /// Status message text
     pub status_message: Option<String>,
+    /// Frame when the status message was last set (for auto-fade)
+    pub status_message_frame: u64,
+    /// Color for the status message (default: amber, green=success, red=error)
+    pub status_message_color: Color,
     /// Whether to toggle status bar visibility
     pub show_status_bar: bool,
     /// Whether to show the help overlay
@@ -51,6 +64,14 @@ pub struct App {
     pub frame_count: u64,
     /// Current resize drag state (for split border drag-to-resize)
     pub resize_state: ResizeState,
+    /// Pending confirmation action (E4/E5: close pane / quit confirmation)
+    pub confirm_action: ConfirmAction,
+    /// Scroll offset for the tab bar (A4: tab scrolling)
+    pub tab_scroll_offset: usize,
+    /// Cached file tree entries (D1): (filename, is_directory)
+    pub file_tree_entries: Vec<(String, bool)>,
+    /// Scrolling offset for the file tree
+    pub file_tree_scroll: usize,
 }
 
 impl App {
@@ -83,10 +104,16 @@ impl App {
                 show_command_palette: false,
                 command_input: String::new(),
                 status_message: None,
+                status_message_frame: 0,
+                status_message_color: Color::Rgb(255, 200, 100),
                 show_status_bar: true,
                 show_help: false,
                 frame_count: 0,
                 resize_state: ResizeState::Idle,
+                confirm_action: ConfirmAction::None,
+                tab_scroll_offset: 0,
+                file_tree_entries: Vec::new(),
+                file_tree_scroll: 0,
             },
             pty_tx,
         )
@@ -95,6 +122,26 @@ impl App {
     /// Handle a tick event (called every frame)
     pub fn tick(&mut self) {
         self.frame_count += 1;
+        // Auto-dismiss status message after ~120 frames (2s at 60fps)
+        if self.status_message.is_some()
+            && self.frame_count.saturating_sub(self.status_message_frame) > 120
+        {
+            self.status_message = None;
+        }
+    }
+
+    /// Set a status message with auto-fade timing (default amber color)
+    pub fn set_status_message(&mut self, msg: String) {
+        self.status_message = Some(msg);
+        self.status_message_frame = self.frame_count;
+        self.status_message_color = Color::Rgb(255, 200, 100);
+    }
+
+    /// Set a status message with a specific color (for success/error notifications)
+    pub fn set_status_message_colored(&mut self, msg: String, color: Color) {
+        self.status_message = Some(msg);
+        self.status_message_frame = self.frame_count;
+        self.status_message_color = color;
     }
 
     /// Handle PTY events from background reader threads
@@ -113,7 +160,7 @@ impl App {
                 }
                 PtyEvent::Exited(pane_id, code) => {
                     log::info!("Pane {} exited with code {}", pane_id, code);
-                    self.status_message = Some(format!("Pane {} exited ({})", pane_id, code));
+                    self.set_status_message(format!("Pane {} exited ({})", pane_id, code));
                 }
             }
         }
@@ -306,6 +353,44 @@ impl App {
         self.command_input.pop();
     }
 
+    /// Refresh the file tree by reading the current working directory (D1)
+    pub fn refresh_file_tree(&mut self) {
+        self.file_tree_entries.clear();
+        if let Ok(entries) = std::fs::read_dir(".") {
+            let mut list: Vec<(String, bool)> = entries
+                .filter_map(|e| e.ok())
+                .map(|e| (e.file_name().to_string_lossy().to_string(), e.file_type().map(|t| t.is_dir()).unwrap_or(false)))
+                .collect();
+            list.sort_by(|a, b| {
+                // Directories first, then alphabetical
+                if a.1 != b.1 { b.1.cmp(&a.1) }
+                else { a.0.to_lowercase().cmp(&b.0.to_lowercase()) }
+            });
+            self.file_tree_entries = list;
+        }
+        self.file_tree_scroll = 0;
+    }
+
+    /// Auto-scroll the tab bar so the active tab is visible (A4)
+    pub fn ensure_tab_visible(&mut self) {
+        let tab_count = self.workspace.tab_count().max(1);
+        let active_tab = self.workspace.active_tab;
+        let avail_w = self.area.width.max(20) as usize;
+        let tab_width = (avail_w / tab_count).max(14).min(32);
+        if tab_width == 0 {
+            return;
+        }
+        let max_visible = avail_w / tab_width;
+        if max_visible == 0 {
+            return;
+        }
+        if active_tab < self.tab_scroll_offset {
+            self.tab_scroll_offset = active_tab;
+        } else if active_tab >= self.tab_scroll_offset + max_visible {
+            self.tab_scroll_offset = active_tab.saturating_add(1).saturating_sub(max_visible);
+        }
+    }
+
     pub fn command_palette_execute(&mut self) {
         let cmd = self.command_input.trim().to_string();
         self.command_input.clear();
@@ -319,7 +404,7 @@ impl App {
             "status" => self.show_status_bar = !self.show_status_bar,
             "quit" => self.running = false,
             _ => {
-                self.status_message = Some(format!("Unknown command: {}", cmd));
+                self.set_status_message(format!("Unknown command: {}", cmd));
             }
         }
     }

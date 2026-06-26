@@ -11,11 +11,18 @@ const BRAND: &str = " MACTERMINAL ";
 pub struct HeaderBar<'a> {
     pub workspace: &'a Workspace,
     pub version: &'a str,
+    pub frame_count: u64,
+    pub tab_scroll_offset: usize,
 }
 
 impl HeaderBar<'_> {
-    pub fn new<'a>(workspace: &'a Workspace, version: &'a str) -> HeaderBar<'a> {
-        HeaderBar { workspace, version }
+    pub fn new<'a>(
+        workspace: &'a Workspace,
+        version: &'a str,
+        frame_count: u64,
+        tab_scroll_offset: usize,
+    ) -> HeaderBar<'a> {
+        HeaderBar { workspace, version, frame_count, tab_scroll_offset }
     }
 }
 
@@ -39,31 +46,20 @@ impl Widget for HeaderBar<'_> {
             }
         }
 
-        // ── Line 1: Brand gradient ──
-        let gradient_colors = [
-            Color::Rgb(0, 180, 255),   // cyan
-            Color::Rgb(0, 170, 245),
-            Color::Rgb(30, 150, 250),
-            Color::Rgb(60, 130, 255),
-            Color::Rgb(80, 115, 255),
-            Color::Rgb(95, 100, 255),
-            Color::Rgb(110, 85, 255),
-            Color::Rgb(120, 75, 250),
-            Color::Rgb(130, 65, 245),
-            Color::Rgb(140, 55, 240),
-            Color::Rgb(150, 45, 235),
-        ];
-
+        // ── Line 1: Brand gradient with flowing wave animation ──
+        // Each character's color shifts over time, creating a wave-like flow
+        // from cyan (left) through purple (center) and back.
+        let base_phase = self.frame_count as f32 * 0.025;
         let brand_chars: Vec<char> = BRAND.chars().collect();
-        let max_colors = gradient_colors.len().min(brand_chars.len());
 
         let mut spans: Vec<Span> = Vec::with_capacity(brand_chars.len());
         for (i, ch) in brand_chars.iter().enumerate() {
-            let color = if i < max_colors {
-                gradient_colors[i]
-            } else {
-                gradient_colors[max_colors - 1]
-            };
+            let t = ((base_phase + i as f32 * 0.35).sin() * 0.5 + 0.5).clamp(0.0, 1.0);
+            // t=0 → cyan (0, 200, 255), t=1 → purple (180, 60, 255)
+            let r = (t * 180.0) as u8;
+            let g = (200u16).saturating_sub((t * 160.0) as u16).min(255) as u8;
+            let b = 255u8;
+            let color = Color::Rgb(r, g, b);
             let style = Style::default()
                 .fg(color)
                 .bg(bg)
@@ -99,36 +95,46 @@ impl Widget for HeaderBar<'_> {
         let brand_area = Rect::new(area.x, brand_line_y, area.width, 1);
         brand_line.render(brand_area, buf);
 
-        // Draw a subtle separator below the brand line
+        // Decorative corner markers on the brand line
         if area.y + 1 < area.bottom() {
             if let Some(cell) = buf.cell_mut((area.x, brand_line_y)) {
-                cell.set_fg(gradient_colors[0]);
+                cell.set_fg(Color::Rgb(0, 200, 255));
                 cell.set_bg(bg);
                 cell.set_char('█');
             }
             if let Some(cell) = buf.cell_mut((area.x + brand_width as u16 - 1, brand_line_y)) {
-                cell.set_fg(gradient_colors[max_colors - 1]);
+                cell.set_fg(Color::Rgb(180, 60, 255));
                 cell.set_bg(bg);
                 cell.set_char('█');
             }
         }
 
         // ── Line 2: Tab bar ──
-        render_tabs(self.workspace, tab_line_y, area, bg, buf);
+        render_tabs(self.workspace, tab_line_y, area, bg, buf, self.tab_scroll_offset);
     }
 }
 
-fn render_tabs(workspace: &Workspace, y: u16, area: Rect, bg: Color, buf: &mut Buffer) {
+fn render_tabs(workspace: &Workspace, y: u16, area: Rect, bg: Color, buf: &mut Buffer, scroll_offset: usize) {
     let tabs = &workspace.tabs;
     let active_idx = workspace.active_tab;
     let tab_count = tabs.len().max(1);
 
-    let tab_width = (area.width as usize / tab_count).max(12).min(30);
+    let tab_width = (area.width as usize / tab_count).max(14).min(32);
     let start_x = area.x as usize;
 
-    for (i, tab) in tabs.iter().enumerate() {
-        let x = start_x + i * tab_width;
-        if x + tab_width > area.right() as usize {
+    // Draw scroll indicators if tabs are scrolled
+    let max_visible = (area.width as usize) / tab_width;
+    let has_left = scroll_offset > 0;
+    let has_right = scroll_offset + max_visible < tabs.len();
+
+    // Reserve space for scroll arrows (2 chars each side)
+    let left_reserve: usize = if has_left { 2 } else { 0 };
+    let right_reserve: usize = if has_right { 2 } else { 0 };
+
+    for (i, tab) in tabs.iter().enumerate().skip(scroll_offset) {
+        let visual_idx = i - scroll_offset;
+        let x = start_x + visual_idx * tab_width + left_reserve;
+        if x + tab_width > area.right() as usize - right_reserve {
             break;
         }
 
@@ -154,18 +160,22 @@ fn render_tabs(workspace: &Workspace, y: u16, area: Rect, bg: Color, buf: &mut B
             }
         }
 
-        // Tab title
-        let title = if tab.title.len() > tab_width.saturating_sub(3) {
-            format!(" {}…", &tab.title[..tab_width.saturating_sub(4)])
+        // Tab indicator bullet + title
+        let indicator = if is_active { "● " } else { "○ " };
+        let raw_title = &tab.title;
+        let max_title_len = tab_width.saturating_sub(4) as usize;
+        let short_title = if raw_title.len() > max_title_len {
+            format!("{}…", &raw_title[..max_title_len.saturating_sub(1)])
         } else {
-            format!(" {} ", tab.title)
+            raw_title.clone()
         };
+        let title = format!("{}{}", indicator, short_title);
 
         let title_style = Style::default()
             .bg(tab_bg)
             .fg(tab_fg)
             .add_modifier(if is_active {
-                Modifier::BOLD | Modifier::UNDERLINED
+                Modifier::BOLD
             } else {
                 Modifier::empty()
             });
@@ -180,20 +190,56 @@ fn render_tabs(workspace: &Workspace, y: u16, area: Rect, bg: Color, buf: &mut B
             }
         }
 
-        // Separator between tabs
+        // Active tab — draw a small underline triangle at the bottom edge
+        if is_active {
+            let underline_x = x + title.len() / 2;
+            if underline_x < area.right() as usize {
+                if let Some(cell) = buf.cell_mut((underline_x as u16, y)) {
+                    cell.set_char('▔');
+                    cell.set_fg(Color::Rgb(0, 200, 255));
+                    cell.set_bg(bg);
+                }
+            }
+        }
+
+        // Separator between tabs: thin vertical bar
         if i < tabs.len() - 1 {
             let sep_x = x + tab_width;
             if sep_x < area.right() as usize {
                 if let Some(cell) = buf.cell_mut((sep_x as u16, y)) {
-                    cell.set_char('│');
-                    cell.set_fg(Color::Rgb(50, 55, 70));
+                    cell.set_char('▏');
+                    cell.set_fg(Color::Rgb(45, 50, 65));
                     cell.set_bg(bg);
                 }
             }
         }
     }
 
-    // Bottom separator line for tab area
+    // Draw scroll indicator arrows
+    let arrow_style = Style::default().fg(Color::Rgb(100, 180, 255)).bg(bg);
+    if has_left {
+        if let Some(cell) = buf.cell_mut((area.x, y)) {
+            cell.set_char('◀');
+            cell.set_style(arrow_style);
+        }
+        if let Some(cell) = buf.cell_mut((area.x + 1, y)) {
+            cell.set_char(' ');
+            cell.set_style(arrow_style);
+        }
+    }
+    if has_right {
+        let right_x = area.right().saturating_sub(2);
+        if let Some(cell) = buf.cell_mut((right_x, y)) {
+            cell.set_char(' ');
+            cell.set_style(arrow_style);
+        }
+        if let Some(cell) = buf.cell_mut((right_x + 1, y)) {
+            cell.set_char('▶');
+            cell.set_style(arrow_style);
+        }
+    }
+
+    // Bottom separator line for tab area (thin dim line)
     let sep_y = y + 1;
     if sep_y < area.bottom() {
         for x in area.x..area.right() {

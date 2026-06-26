@@ -7,9 +7,27 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Span;
 use ratatui::widgets::{Block, Borders, Widget};
+use ratatui::symbols::border;
 
 use crate::animations::ColorAnimation;
 
+/// ── Colors ──────────────────────────────────────────────
+const BG_DARK: Color = Color::Rgb(15, 18, 28);
+const BG_PANE: Color = Color::Rgb(20, 25, 35);
+
+const BORDER_INACTIVE: Color = Color::Rgb(50, 55, 70);
+const BORDER_RESIZE: Color = Color::Rgb(0, 235, 255);
+
+const SEP_DIM: Color = Color::Rgb(50, 55, 70);
+const SEP_BRIGHT: Color = Color::Rgb(0, 220, 255);
+const SEP_BG: Color = BG_DARK;
+
+/// ── Separator characters ────────────────────────────────
+const SEP_V: char = '║';
+const SEP_H: char = '═';
+const CROSS: char = '╬';
+
+/// ── PaneGrid widget ─────────────────────────────────────
 pub struct PaneGrid<'a> {
     pub root: &'a SplitNode,
     pub active_pane: PaneId,
@@ -18,6 +36,10 @@ pub struct PaneGrid<'a> {
     pub focus_animation: Option<&'a ColorAnimation>,
     /// If set, highlight the split border being drag-resized (pane ID identifies which split)
     pub resize_pane: Option<PaneId>,
+    /// Sequential index for each pane (for number overlay)
+    pub pane_indices: &'a HashMap<PaneId, usize>,
+    /// Current frame count for animations (subtle glow pulsing)
+    pub frame_count: u64,
 }
 
 impl Widget for PaneGrid<'_> {
@@ -53,12 +75,7 @@ impl PaneGrid<'_> {
                         let left_h = (area.height as f32 * ratio) as u16;
                         (
                             Rect::new(area.x, area.y, area.width, left_h),
-                            Rect::new(
-                                area.x,
-                                area.y + left_h,
-                                area.width,
-                                area.height - left_h,
-                            ),
+                            Rect::new(area.x, area.y + left_h, area.width, area.height - left_h),
                         )
                     }
                 };
@@ -66,20 +83,18 @@ impl PaneGrid<'_> {
                 let is_resizing = self
                     .resize_pane
                     .is_some_and(|p| left.contains(&p) || right.contains(&p));
-                let sep_fg = if is_resizing {
-                    Color::Rgb(0, 220, 255)
-                } else {
-                    Color::Rgb(50, 55, 70)
-                };
+                let sep_fg = if is_resizing { SEP_BRIGHT } else { SEP_DIM };
 
                 match direction {
                     SplitDirection::Horizontal => {
                         let sep_x = left_area.right();
                         for y in area.y..area.y + area.height {
                             if let Some(cell) = buf.cell_mut((sep_x, y)) {
-                                cell.set_char('│');
+                                let existing = cell.symbol().chars().next().unwrap_or(' ');
+                                let ch = crossing_char(existing, SEP_V, SEP_H, CROSS);
+                                cell.set_char(ch);
                                 cell.set_fg(sep_fg);
-                                cell.set_bg(Color::Rgb(15, 18, 28));
+                                cell.set_bg(SEP_BG);
                             }
                         }
                     }
@@ -87,9 +102,11 @@ impl PaneGrid<'_> {
                         let sep_y = left_area.bottom();
                         for x in area.x..area.x + area.width {
                             if let Some(cell) = buf.cell_mut((x, sep_y)) {
-                                cell.set_char('─');
+                                let existing = cell.symbol().chars().next().unwrap_or(' ');
+                                let ch = crossing_char(existing, SEP_H, SEP_V, CROSS);
+                                cell.set_char(ch);
                                 cell.set_fg(sep_fg);
-                                cell.set_bg(Color::Rgb(15, 18, 28));
+                                cell.set_bg(SEP_BG);
                             }
                         }
                     }
@@ -102,29 +119,55 @@ impl PaneGrid<'_> {
     }
 
     fn render_pane(&self, pane_id: PaneId, area: Rect, buf: &mut Buffer) {
-        if area.width < 3 || area.height < 3 {
+        if area.width < 4 || area.height < 3 {
             return;
         }
 
         let is_active = pane_id == self.active_pane;
-        let border_color = if is_active {
-            Color::Rgb(0, 180, 255)
+        let is_resizing = self.resize_pane.is_some_and(|p| p == pane_id);
+
+        // Focus breathing: subtle brightness modulation on active pane content
+        let breathe_amount: i16 = if is_active {
+            let breath = (self.frame_count as f32 * 0.03).sin() * 8.0; // ±8 brightness
+            breath as i16
         } else {
-            Color::Rgb(60, 65, 80)
+            0
         };
 
+        let border_color = if is_resizing {
+            BORDER_RESIZE
+        } else if is_active {
+            // Subtle breathing glow on the active pane border
+            let pulse = ((self.frame_count as f32 * 0.04).sin() * 20.0) as u8;
+            Color::Rgb(
+                0,
+                (190u16).saturating_add(pulse as u16).min(255) as u8,
+                255u8.min(255u8.saturating_add(pulse)),
+            )
+        } else {
+            BORDER_INACTIVE
+        };
+
+        // Build title with pane number
+        let pane_num = self.pane_indices.get(&pane_id).copied().unwrap_or(0);
         let id_str = pane_id.to_string();
-        let short_id = format!(" {}", &id_str[..8.min(id_str.len())]);
+        let short_id = &id_str[..8.min(id_str.len())];
+        let title = if pane_num > 0 {
+            format!(" {} [{}] ", short_id, pane_num)
+        } else {
+            format!(" {} ", short_id)
+        };
 
         let block = Block::default()
             .borders(Borders::ALL)
+            .border_set(border::ROUNDED)
             .border_style(
                 Style::default()
                     .fg(border_color)
                     .add_modifier(if is_active { Modifier::BOLD } else { Modifier::empty() }),
             )
             .title(Span::styled(
-                short_id,
+                title.as_str(),
                 Style::default()
                     .fg(border_color)
                     .add_modifier(if is_active { Modifier::BOLD } else { Modifier::empty() }),
@@ -133,30 +176,64 @@ impl PaneGrid<'_> {
         let inner = block.inner(area);
         block.render(area, buf);
 
+        // ── Pane title bar (B5) ──
+        let bar_bg = if is_active { Color::Rgb(28, 38, 58) } else { Color::Rgb(22, 27, 38) };
+        let bar_fg = if is_active { Color::Rgb(130, 190, 255) } else { Color::Rgb(100, 110, 130) };
+        let bar_y = inner.y;
+        let bar_h = if inner.height > 3 { 1u16 } else { 0u16 };
+        if bar_h > 0 {
+            let bar_label = format!("  [{}]  ", pane_num);
+            for bx in inner.x..inner.right() {
+                if let Some(cell) = buf.cell_mut((bx, bar_y)) {
+                    cell.set_bg(bar_bg);
+                    cell.set_fg(bar_fg);
+                    cell.set_char(' ');
+                }
+            }
+            for (ci, ch) in bar_label.chars().enumerate() {
+                let cx = inner.x + ci as u16;
+                if cx < inner.right() {
+                    if let Some(cell) = buf.cell_mut((cx, bar_y)) {
+                        cell.set_char(ch);
+                        cell.set_bg(bar_bg);
+                        cell.set_fg(bar_fg);
+                        if is_active { cell.set_style(Style::default().add_modifier(Modifier::BOLD)); }
+                    }
+                }
+            }
+        }
+
+        // Adjust content area to skip the title bar
+        let content_inner = Rect {
+            x: inner.x,
+            y: inner.y + bar_h,
+            width: inner.width,
+            height: inner.height.saturating_sub(bar_h),
+        };
+
         if let Some(parser) = self.parsers.get(&pane_id) {
-            // Try to read the screen — never block render on parser contention
             let screen = parser.try_read().ok().map(|p| p.screen().clone());
             if let Some(ref scr) = screen {
-                self.render_screen(scr, inner, buf);
+                self.render_screen(scr, content_inner, buf, breathe_amount);
             }
         } else {
-            for y in inner.y..inner.bottom() {
-                for x in inner.x..inner.right() {
+            let bg = if breathe_amount != 0 { breathe_color(BG_PANE, breathe_amount) } else { BG_PANE };
+            for y in content_inner.y..content_inner.bottom() {
+                for x in content_inner.x..content_inner.right() {
                     if let Some(cell) = buf.cell_mut((x, y)) {
                         cell.set_char(' ');
-                        cell.set_style(Style::default().bg(Color::Rgb(20, 25, 35)));
+                        cell.set_style(Style::default().bg(bg));
                     }
                 }
             }
         }
     }
 
-    fn render_screen(&self, screen: &vt100::Screen, area: Rect, buf: &mut Buffer) {
+    fn render_screen(&self, screen: &vt100::Screen, area: Rect, buf: &mut Buffer, breathe: i16) {
         let (screen_rows, screen_cols) = screen.size();
         let max_rows = screen_rows.min(area.height);
         let max_cols = screen_cols.min(area.width);
 
-        // Single pass: iterate every cell in the area once
         for row in 0..area.height {
             for col in 0..area.width {
                 let buf_x = area.x + col;
@@ -167,8 +244,13 @@ impl PaneGrid<'_> {
                 if let Some(cell) = buf.cell_mut((buf_x, buf_y)) {
                     if row < max_rows && col < max_cols {
                         if let Some(vt_cell) = screen.cell(row, col) {
-                            let fg = vt100_color_to_ratatui(vt_cell.fgcolor());
-                            let bg = vt100_color_to_ratatui(vt_cell.bgcolor());
+                            // Tokyo Night default colors for unset/default terminal colors
+                            const TOKYO_FG: Color = Color::Rgb(169, 177, 214); // #a9b1d6
+                            const TOKYO_BG: Color = Color::Rgb(26, 27, 38);   // #1a1b26
+                            let fg = vt100_color_to_ratatui(vt_cell.fgcolor(), TOKYO_FG);
+                            let bg = vt100_color_to_ratatui(vt_cell.bgcolor(), TOKYO_BG);
+                            let fg = if breathe != 0 { breathe_color(fg, breathe) } else { fg };
+                            let bg = if breathe != 0 { breathe_color(bg, breathe) } else { bg };
                             let mut style = Style::default().fg(fg).bg(bg);
                             if vt_cell.bold() {
                                 style = style.add_modifier(Modifier::BOLD);
@@ -183,12 +265,13 @@ impl PaneGrid<'_> {
                             let ch = vt_cell.contents().chars().next().unwrap_or(' ');
                             cell.set_char(ch);
                         } else {
+                            let bg = if breathe != 0 { breathe_color(BG_PANE, breathe) } else { BG_PANE };
                             cell.set_char(' ');
-                            cell.set_style(Style::default().bg(Color::Rgb(20, 25, 35)));
+                            cell.set_style(Style::default().bg(bg));
                         }
                     } else {
                         cell.set_char(' ');
-                        cell.set_style(Style::default().bg(Color::Rgb(20, 25, 35)));
+                        cell.set_style(Style::default().bg(BG_PANE));
                     }
                 }
             }
@@ -196,10 +279,38 @@ impl PaneGrid<'_> {
     }
 }
 
-fn vt100_color_to_ratatui(color: vt100::Color) -> Color {
+/// Pick the correct crossing character when two separator lines meet.
+/// `my_char` is the primary char for this direction, `perp_char` is the char from the
+/// perpendicular direction (already drawn), `cross` is used when both meet.
+fn crossing_char(existing: char, my_char: char, perp_char: char, cross: char) -> char {
+    if existing == perp_char || existing == '│' || existing == '─'
+        || existing == '║' || existing == '═'
+    {
+        if existing != ' ' {
+            return cross;
+        }
+    }
+    my_char
+}
+
+fn vt100_color_to_ratatui(color: vt100::Color, default_color: Color) -> Color {
     match color {
-        vt100::Color::Default => Color::Reset,
+        vt100::Color::Default => default_color,
         vt100::Color::Idx(idx) => Color::Indexed(idx),
         vt100::Color::Rgb(r, g, b) => Color::Rgb(r, g, b),
+    }
+}
+
+/// Apply a subtle brightness shift for the focus-breathing effect.
+/// Only modulates explicit RGB colors; passes Reset/Indexed through unchanged.
+fn breathe_color(color: Color, amount: i16) -> Color {
+    match color {
+        Color::Rgb(r, g, b) => {
+            let r = (r as i16 + amount).clamp(0, 255) as u8;
+            let g = (g as i16 + amount).clamp(0, 255) as u8;
+            let b = (b as i16 + amount).clamp(0, 255) as u8;
+            Color::Rgb(r, g, b)
+        }
+        other => other,
     }
 }

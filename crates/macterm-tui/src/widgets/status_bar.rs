@@ -10,6 +10,7 @@ pub struct StatusBar<'a> {
     pub pane_count: usize,
     pub active_tab: usize,
     pub message: Option<&'a str>,
+    pub message_color: Color,
     pub show_file_tree: bool,
     pub version: &'a str,
 }
@@ -47,13 +48,13 @@ impl Widget for StatusBar<'_> {
         let left_area = Rect::new(area.x, area.y, left_len as u16, area.height);
         left.render(left_area, buf);
 
-        // Center section: status message
+        // Center section: status message (uses message_color from App)
         if let Some(msg) = self.message {
             let msg_span = Span::styled(
                 format!(" {} ", msg),
                 Style::default()
                     .bg(bg)
-                    .fg(Color::Rgb(255, 200, 100))
+                    .fg(self.message_color)
                     .add_modifier(Modifier::ITALIC),
             );
             let msg_area = Rect::new(
