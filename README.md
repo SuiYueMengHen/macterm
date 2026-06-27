@@ -11,7 +11,7 @@
 ## Features
 
 - **Multi-tab terminals** — multiple terminal sessions in one window, switch with `Alt+←→`
-- **Split panes** — split horizontally (`Alt+D`) or vertically (`Alt+E`) into resizable panes
+- **Split panes** — split horizontally (`Ctrl+D`) or vertically (`Ctrl+E`) into resizable panes
 - **Drag-to-resize** — click and drag split borders to resize panes in real-time
 - **Pane navigation** — `Ctrl+↑↓←→` to move focus between panes
 - **Brand header** — bold "MACTERMINAL" logo with tab bar
@@ -19,11 +19,11 @@
 - **Pane title bar** — 1-line header inside each pane with `[N]` label
 - **Pane number overlays** — numbered `[1]` `[2]` labels in pane borders
 - **Rounded borders** — `╭─╮` style pane borders with `║═╬` double-line separators
-- **Search overlay** — `Alt+S` to find text in the active pane, Enter/Tab navigation
+- **Search overlay** — `Ctrl+S` to find text in the active pane, Enter/Tab navigation
 - **Confirmation dialogs** — confirm before closing a pane or quitting
-- **Help overlay** — `Alt+H` shows all keybindings
-- **Command palette** — `Alt+P` for quick commands
-- **File tree sidebar** — `Alt+F` to toggle, reads live directory listing (sorted, dirs first)
+- **Help overlay** — `Ctrl+H` shows all keybindings
+- **Command palette** — `Ctrl+P` for quick commands
+- **File tree sidebar** — `Ctrl+F` to toggle, reads live directory listing (sorted, dirs first)
 - **Terminal-default colors** — all UI chrome uses terminal theme colors, no hardcoded palette
 - **Status bar** — tab count, pane count, status messages with auto-fade
 - **Async event loop** — 60fps rendering via `tokio::select!` — no input lag
@@ -67,22 +67,22 @@ Options:
 |---|---|
 | `Ctrl+Q` | Quit (with confirmation) |
 | **Panes** | |
-| `Alt+D` | Split pane right (horizontal) |
-| `Alt+E` | Split pane down (vertical) |
-| `Alt+W` | Close active pane (with confirmation) |
+| `Ctrl+D` | Split pane right (horizontal) |
+| `Ctrl+E` | Split pane down (vertical) |
+| `Ctrl+W` | Close active pane (with confirmation) |
 | `Ctrl+↑↓←→` | Focus next/previous pane |
 | **Mouse** | |
 | Click pane | Focus pane |
 | Drag border | Resize split panes |
 | **Tabs** | |
-| `Alt+T` | New tab |
+| `Ctrl+T` | New tab |
 | `Alt+←→` | Switch tab prev/next (auto-scroll) |
 | `Alt+1-9` | Switch to tab by number |
 | **Interface** | |
-| `Alt+P` | Command palette |
-| `Alt+F` | File tree (toggle) |
-| `Alt+S` | Search in active pane |
-| `Alt+H` | Help overlay |
+| `Ctrl+P` | Command palette |
+| `Ctrl+F` | File tree (toggle) |
+| `Ctrl+S` | Search in active pane |
+| `Ctrl+H` | Help overlay |
 | **Search** (when open) | |
 | `Enter` / `Tab` | Next match |
 | `Shift+Tab` | Previous match |
@@ -104,11 +104,7 @@ Options:
 
 - **Color stripped from entire app**: all custom `Color::Rgb(...)` removed — header, status bar, pane borders, title bars, overlays, sidebar all use terminal defaults. No hardcoded palette anywhere.
 - **Dead code removal**: `ColorAnimation`, `AnimationTimeline`, `animated_border`, `focus_animation` removed.
-- **Keyboard conflict fix**: all TUI shortcuts moved from `Ctrl+letter` (which conflicted with shell readline) to `Alt+letter`:
-  - `Alt+D` split right, `Alt+E` split down, `Alt+W` close pane
-  - `Alt+T` new tab, `Alt+P` command palette, `Alt+F` file tree, `Alt+H` help
-  - `Ctrl+Q` quit kept (standard TUI convention)
-  - All `Ctrl+letter` combos now pass through to the shell properly
+- **Keyboard shortcut fix**: reverted all Alt/Option shortcuts back to Ctrl+letter — Option key on macOS sends Unicode characters by default, not modifier events. All `Ctrl+letter` combos work reliably on macOS Terminal.
 - **PTY size fix**: `resize_active_panes()` now accounts for border (2 cols, 2 rows) and title bar (1 row) — shell output no longer overflows or wraps incorrectly
 - **Initial window sizing fix**: PTY is resized to terminal dimensions on startup, not left at 80×24
 - **Version display fix**: version number no longer truncated in header; now reads from `CARGO_PKG_VERSION`

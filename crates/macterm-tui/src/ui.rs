@@ -194,7 +194,10 @@ fn handle_event(app: &mut App, event: &Event) -> Result<()> {
 
             match key.code {
                 // Search (find)
-                KeyCode::Char('s') if key.modifiers == KeyModifiers::ALT => {
+                KeyCode::Char('s')
+                    if key.modifiers == KeyModifiers::CONTROL
+                        || key.modifiers == KeyModifiers::ALT =>
+                {
                     app.show_search = !app.show_search;
                     if app.show_search {
                         app.search_query.clear();
@@ -208,18 +211,18 @@ fn handle_event(app: &mut App, event: &Event) -> Result<()> {
                     app.confirm_action = ConfirmAction::Quit;
                 }
 
-                // Split pane (Alt to avoid conflict with shell Ctrl+D/E)
-                KeyCode::Char('d') if key.modifiers == KeyModifiers::ALT => {
+                // Split pane
+                KeyCode::Char('d') if key.modifiers == KeyModifiers::CONTROL => {
                     app.split_active_pane(macterm_core::SplitDirection::Horizontal);
                     app.set_status_message("Split right".to_string());
                 }
-                KeyCode::Char('e') if key.modifiers == KeyModifiers::ALT => {
+                KeyCode::Char('e') if key.modifiers == KeyModifiers::CONTROL => {
                     app.split_active_pane(macterm_core::SplitDirection::Vertical);
                     app.set_status_message("Split down".to_string());
                 }
 
-                // Close pane (Alt to avoid conflict with shell Ctrl+W)
-                KeyCode::Char('w') if key.modifiers == KeyModifiers::ALT => {
+                // Close pane (with confirmation)
+                KeyCode::Char('w') if key.modifiers == KeyModifiers::CONTROL => {
                     if app.workspace.active_tab().pane_count() > 1 {
                         app.confirm_action = ConfirmAction::ClosePane;
                     } else {
@@ -229,7 +232,10 @@ fn handle_event(app: &mut App, event: &Event) -> Result<()> {
                 }
 
                 // New tab
-                KeyCode::Char('t') if key.modifiers == KeyModifiers::ALT => {
+                KeyCode::Char('t')
+                    if key.modifiers == KeyModifiers::ALT
+                        || key.modifiers == KeyModifiers::CONTROL =>
+                {
                     let tab_num = app.workspace.tab_count() + 1;
                     app.workspace.add_tab(format!("term-{}", tab_num));
 
@@ -285,22 +291,22 @@ fn handle_event(app: &mut App, event: &Event) -> Result<()> {
                     app.focus_prev_pane();
                 }
 
-                // Command palette (Alt to avoid conflict with shell Ctrl+P)
-                KeyCode::Char('p') if key.modifiers == KeyModifiers::ALT => {
+                // Command palette
+                KeyCode::Char('p') if key.modifiers == KeyModifiers::CONTROL => {
                     app.show_command_palette = !app.show_command_palette;
                     app.command_input.clear();
                 }
 
-                // Toggle file tree (Alt to avoid conflict with shell Ctrl+F)
-                KeyCode::Char('f') if key.modifiers == KeyModifiers::ALT => {
+                // Toggle file tree
+                KeyCode::Char('f') if key.modifiers == KeyModifiers::CONTROL => {
                     app.show_file_tree = !app.show_file_tree;
                     if app.show_file_tree {
                         app.refresh_file_tree();
                     }
                 }
 
-                // Help overlay (Alt to avoid conflict with shell Ctrl+H)
-                KeyCode::Char('h') if key.modifiers == KeyModifiers::ALT => {
+                // Help overlay
+                KeyCode::Char('h') if key.modifiers == KeyModifiers::CONTROL => {
                     app.show_help = !app.show_help;
                 }
 
@@ -706,21 +712,21 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         }}}
 
         sec!(" Panes ");
-        row!(" Alt+D       ", "Split right   ", "(horizontal)");
-        row!(" Alt+E       ", "Split down    ", "(vertical)");
-        row!(" Alt+W       ", "Close pane    ", "");
+        row!(" Ctrl+D      ", "Split right   ", "(horizontal)");
+        row!(" Ctrl+E      ", "Split down    ", "(vertical)");
+        row!(" Ctrl+W      ", "Close pane    ", "");
         row!(" Ctrl+↑↓←→  ", "Focus pane    ", "next/prev");
         rows.push(Line::from(""));
         sec!(" Tabs ");
-        row!(" Alt+T       ", "New tab       ", "");
+        row!(" Ctrl+T      ", "New tab       ", "");
         row!(" Alt+← →     ", "Switch tab    ", "prev/next");
         row!(" Alt+1-9     ", "Switch tab    ", "by number");
         rows.push(Line::from(""));
         sec!(" Interface ");
-        row!(" Alt+P       ", "Command palette", "");
-        row!(" Alt+F       ", "File tree     ", "toggle");
-        row!(" Alt+S       ", "Search        ", "find in pane");
-        row!(" Alt+H       ", "Help          ", "this screen");
+        row!(" Ctrl+P      ", "Command palette", "");
+        row!(" Ctrl+F      ", "File tree     ", "toggle");
+        row!(" Ctrl+S      ", "Search        ", "find in pane");
+        row!(" Ctrl+H      ", "Help          ", "this screen");
         row!(" Ctrl+Q      ", "Quit          ", "");
         rows.push(Line::from(""));
         sec!(" Shell input ");
