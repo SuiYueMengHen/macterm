@@ -214,11 +214,9 @@ fn handle_event(app: &mut App, event: &Event) -> Result<()> {
                 // Split pane
                 KeyCode::Char('d') if key.modifiers == KeyModifiers::CONTROL => {
                     app.split_active_pane(macterm_core::SplitDirection::Horizontal);
-                    app.set_status_message("Split right".to_string());
                 }
                 KeyCode::Char('e') if key.modifiers == KeyModifiers::CONTROL => {
                     app.split_active_pane(macterm_core::SplitDirection::Vertical);
-                    app.set_status_message("Split down".to_string());
                 }
 
                 // Close pane (with confirmation)

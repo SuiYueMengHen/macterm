@@ -240,7 +240,6 @@ impl App {
         match PtySession::spawn(new_pane_id, 80, 24, tx) {
             Ok(session) => {
                 self.sessions.insert(new_pane_id, session);
-                log::info!("Split pane: created {}", new_pane_id);
             }
             Err(e) => {
                 log::error!("Failed to spawn PTY for new pane: {}", e);
