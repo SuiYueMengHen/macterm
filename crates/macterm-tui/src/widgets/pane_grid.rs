@@ -111,12 +111,7 @@ impl PaneGrid<'_> {
             return;
         }
 
-        let is_active = pane_id == self.active_pane;
-        let _is_resizing = self.resize_pane.is_some_and(|p| p == pane_id);
-
-        let breathe_amount: i16 = 0;
-
-        let border_color = if is_active { Color::Reset } else { Color::Reset };
+        let border_color = Color::Reset;
 
         // Build title with pane number
         let pane_num = self.pane_indices.get(&pane_id).copied().unwrap_or(0);
@@ -140,16 +135,12 @@ impl PaneGrid<'_> {
         let inner = block.inner(area);
         block.render(area, buf);
 
-        let bar_bg = Color::Reset;
-        let bar_fg = Color::Reset;
         let bar_y = inner.y;
         let bar_h = if inner.height > 3 { 1u16 } else { 0u16 };
         if bar_h > 0 {
             let bar_label = format!("  [{}]  ", pane_num);
             for bx in inner.x..inner.right() {
                 if let Some(cell) = buf.cell_mut((bx, bar_y)) {
-                    cell.set_bg(bar_bg);
-                    cell.set_fg(bar_fg);
                     cell.set_char(' ');
                 }
             }
@@ -158,8 +149,6 @@ impl PaneGrid<'_> {
                 if cx < inner.right() {
                     if let Some(cell) = buf.cell_mut((cx, bar_y)) {
                         cell.set_char(ch);
-                        cell.set_bg(bar_bg);
-                        cell.set_fg(bar_fg);
                     }
                 }
             }
@@ -174,9 +163,8 @@ impl PaneGrid<'_> {
         };
 
         if let Some(parser) = self.parsers.get(&pane_id) {
-            let screen = parser.try_read().ok().map(|p| p.screen().clone());
-            if let Some(ref scr) = screen {
-                self.render_screen(scr, content_inner, buf, breathe_amount);
+            if let Ok(guard) = parser.try_read() {
+                self.render_screen(guard.screen(), content_inner, buf);
             }
         } else {
             for y in content_inner.y..content_inner.bottom() {
@@ -190,42 +178,55 @@ impl PaneGrid<'_> {
         }
     }
 
-    fn render_screen(&self, screen: &vt100::Screen, area: Rect, buf: &mut Buffer, breathe: i16) {
+    fn render_screen(&self, screen: &vt100::Screen, area: Rect, buf: &mut Buffer) {
         let (screen_rows, screen_cols) = screen.size();
         let max_rows = screen_rows.min(area.height);
         let max_cols = screen_cols.min(area.width);
 
-        for row in 0..area.height {
-            for col in 0..area.width {
+        // Fill area beyond screen content with blank cells
+        if area.height > max_rows {
+            for y in (area.y + max_rows)..area.bottom() {
+                for x in area.x..area.right() {
+                    if let Some(cell) = buf.cell_mut((x, y)) {
+                        cell.set_char(' ');
+                        cell.set_style(Style::default());
+                    }
+                }
+            }
+        }
+        if area.width > max_cols {
+            for y in area.y..(area.y + max_rows) {
+                for x in (area.x + max_cols)..area.right() {
+                    if let Some(cell) = buf.cell_mut((x, y)) {
+                        cell.set_char(' ');
+                        cell.set_style(Style::default());
+                    }
+                }
+            }
+        }
+
+        // Render screen cells — only iterate over screen dimensions
+        for row in 0..max_rows {
+            for col in 0..max_cols {
                 let buf_x = area.x + col;
                 let buf_y = area.y + row;
-                if buf_x >= area.right() || buf_y >= area.bottom() {
-                    continue;
-                }
                 if let Some(cell) = buf.cell_mut((buf_x, buf_y)) {
-                    if row < max_rows && col < max_cols {
-                        if let Some(vt_cell) = screen.cell(row, col) {
-                            let fg = vt100_color_to_ratatui(vt_cell.fgcolor(), Color::Reset);
-                            let bg = vt100_color_to_ratatui(vt_cell.bgcolor(), Color::Reset);
-                            let fg = if breathe != 0 { breathe_color(fg, breathe) } else { fg };
-                            let bg = if breathe != 0 { breathe_color(bg, breathe) } else { bg };
-                            let mut style = Style::default().fg(fg).bg(bg);
-                            if vt_cell.bold() {
-                                style = style.add_modifier(Modifier::BOLD);
-                            }
-                            if vt_cell.italic() {
-                                style = style.add_modifier(Modifier::ITALIC);
-                            }
-                            if vt_cell.underline() {
-                                style = style.add_modifier(Modifier::UNDERLINED);
-                            }
-                            cell.set_style(style);
-                            let ch = vt_cell.contents().chars().next().unwrap_or(' ');
-                            cell.set_char(ch);
-                        } else {
-                            cell.set_char(' ');
-                            cell.set_style(Style::default());
+                    if let Some(vt_cell) = screen.cell(row, col) {
+                        let fg = vt100_color_to_ratatui(vt_cell.fgcolor(), Color::Reset);
+                        let bg = vt100_color_to_ratatui(vt_cell.bgcolor(), Color::Reset);
+                        let mut style = Style::default().fg(fg).bg(bg);
+                        if vt_cell.bold() {
+                            style = style.add_modifier(Modifier::BOLD);
                         }
+                        if vt_cell.italic() {
+                            style = style.add_modifier(Modifier::ITALIC);
+                        }
+                        if vt_cell.underline() {
+                            style = style.add_modifier(Modifier::UNDERLINED);
+                        }
+                        cell.set_style(style);
+                        let ch = vt_cell.contents().chars().next().unwrap_or(' ');
+                        cell.set_char(ch);
                     } else {
                         cell.set_char(' ');
                         cell.set_style(Style::default());
@@ -258,16 +259,4 @@ fn vt100_color_to_ratatui(color: vt100::Color, default_color: Color) -> Color {
     }
 }
 
-/// Apply a subtle brightness shift for the focus-breathing effect.
-/// Only modulates explicit RGB colors; passes Reset/Indexed through unchanged.
-fn breathe_color(color: Color, amount: i16) -> Color {
-    match color {
-        Color::Rgb(r, g, b) => {
-            let r = (r as i16 + amount).clamp(0, 255) as u8;
-            let g = (g as i16 + amount).clamp(0, 255) as u8;
-            let b = (b as i16 + amount).clamp(0, 255) as u8;
-            Color::Rgb(r, g, b)
-        }
-        other => other,
-    }
-}
+

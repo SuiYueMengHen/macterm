@@ -80,6 +80,8 @@ pub struct App {
     pub search_matches: Vec<(u16, u16, u16)>,
     /// Index into search_matches for the currently highlighted match
     pub search_match_index: usize,
+    /// Set true when PTY output, user input, or resize occurs; cleared after render.
+    pub dirty: bool,
 }
 
 impl App {
@@ -126,6 +128,7 @@ impl App {
                 search_query: String::new(),
                 search_matches: Vec::new(),
                 search_match_index: 0,
+                dirty: true,
             },
             pty_tx,
         )

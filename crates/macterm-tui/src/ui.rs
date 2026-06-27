@@ -58,9 +58,12 @@ pub async fn run(mut app: App) -> Result<()> {
             }
         }
 
-        terminal.draw(|frame| {
-            render(&mut app, frame);
-        })?;
+        if app.dirty {
+            terminal.draw(|frame| {
+                render(&mut app, frame);
+            })?;
+            app.dirty = false;
+        }
     }
 
     // Cleanup
@@ -79,23 +82,27 @@ fn handle_pty_event(app: &mut App, event: &crate::pty::PtyEvent) {
     match event {
         crate::pty::PtyEvent::Output(pane_id, _) => {
             trace!("Output received for pane {}", pane_id);
+            app.dirty = true;
         }
         crate::pty::PtyEvent::Resized(pane_id, cols, rows) => {
             if let Some(session) = app.sessions.get_mut(pane_id) {
                 let _ = session.resize(*cols, *rows);
             }
+            app.dirty = true;
         }
         crate::pty::PtyEvent::Exited(pane_id, code) => {
             info!("Pane {} exited with code {}", pane_id, code);
             app.set_status_message(
                 format!("Pane {} exited ({})", pane_id, code),
             );
+            app.dirty = true;
         }
     }
 }
 
 /// Handle input events
 fn handle_event(app: &mut App, event: &Event) -> Result<()> {
+    app.dirty = true;
     match event {
         Event::Key(key) => {
             if key.kind != KeyEventKind::Press {
