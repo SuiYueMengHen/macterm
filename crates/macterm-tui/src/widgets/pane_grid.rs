@@ -9,18 +9,7 @@ use ratatui::text::Span;
 use ratatui::widgets::{Block, Borders, Widget};
 use ratatui::symbols::border;
 
-use crate::animations::ColorAnimation;
-
-/// ── Colors ──────────────────────────────────────────────
-const BG_DARK: Color = Color::Rgb(15, 18, 28);
-const BG_PANE: Color = Color::Rgb(20, 25, 35);
-
-const BORDER_INACTIVE: Color = Color::Rgb(50, 55, 70);
-const BORDER_RESIZE: Color = Color::Rgb(0, 235, 255);
-
-const SEP_DIM: Color = Color::Rgb(50, 55, 70);
-const SEP_BRIGHT: Color = Color::Rgb(0, 220, 255);
-const SEP_BG: Color = BG_DARK;
+const SEP_BG: Color = Color::Reset;
 
 /// ── Separator characters ────────────────────────────────
 const SEP_V: char = '║';
@@ -33,7 +22,6 @@ pub struct PaneGrid<'a> {
     pub active_pane: PaneId,
     pub parsers: &'a HashMap<PaneId, Arc<RwLock<vt100::Parser>>>,
     pub area: Rect,
-    pub focus_animation: Option<&'a ColorAnimation>,
     /// If set, highlight the split border being drag-resized (pane ID identifies which split)
     pub resize_pane: Option<PaneId>,
     /// Sequential index for each pane (for number overlay)
@@ -80,10 +68,10 @@ impl PaneGrid<'_> {
                     }
                 };
 
-                let is_resizing = self
+                let _is_resizing = self
                     .resize_pane
                     .is_some_and(|p| left.contains(&p) || right.contains(&p));
-                let sep_fg = if is_resizing { SEP_BRIGHT } else { SEP_DIM };
+                let sep_fg = Color::Reset;
 
                 match direction {
                     SplitDirection::Horizontal => {
@@ -124,17 +112,11 @@ impl PaneGrid<'_> {
         }
 
         let is_active = pane_id == self.active_pane;
-        let is_resizing = self.resize_pane.is_some_and(|p| p == pane_id);
+        let _is_resizing = self.resize_pane.is_some_and(|p| p == pane_id);
 
         let breathe_amount: i16 = 0;
 
-        let border_color = if is_resizing {
-            BORDER_RESIZE
-        } else if is_active {
-            Color::Rgb(70, 140, 210)
-        } else {
-            BORDER_INACTIVE
-        };
+        let border_color = if is_active { Color::Reset } else { Color::Reset };
 
         // Build title with pane number
         let pane_num = self.pane_indices.get(&pane_id).copied().unwrap_or(0);
@@ -158,8 +140,8 @@ impl PaneGrid<'_> {
         let inner = block.inner(area);
         block.render(area, buf);
 
-        let bar_bg = if is_active { Color::Rgb(24, 32, 48) } else { Color::Rgb(20, 25, 36) };
-        let bar_fg = if is_active { Color::Rgb(110, 150, 200) } else { Color::Rgb(80, 90, 110) };
+        let bar_bg = Color::Reset;
+        let bar_fg = Color::Reset;
         let bar_y = inner.y;
         let bar_h = if inner.height > 3 { 1u16 } else { 0u16 };
         if bar_h > 0 {
@@ -197,12 +179,11 @@ impl PaneGrid<'_> {
                 self.render_screen(scr, content_inner, buf, breathe_amount);
             }
         } else {
-            let bg = if breathe_amount != 0 { breathe_color(BG_PANE, breathe_amount) } else { BG_PANE };
             for y in content_inner.y..content_inner.bottom() {
                 for x in content_inner.x..content_inner.right() {
                     if let Some(cell) = buf.cell_mut((x, y)) {
                         cell.set_char(' ');
-                        cell.set_style(Style::default().bg(bg));
+                        cell.set_style(Style::default());
                     }
                 }
             }
@@ -224,11 +205,8 @@ impl PaneGrid<'_> {
                 if let Some(cell) = buf.cell_mut((buf_x, buf_y)) {
                     if row < max_rows && col < max_cols {
                         if let Some(vt_cell) = screen.cell(row, col) {
-                            // Tokyo Night default colors for unset/default terminal colors
-                            const TOKYO_FG: Color = Color::Rgb(169, 177, 214); // #a9b1d6
-                            const TOKYO_BG: Color = Color::Rgb(26, 27, 38);   // #1a1b26
-                            let fg = vt100_color_to_ratatui(vt_cell.fgcolor(), TOKYO_FG);
-                            let bg = vt100_color_to_ratatui(vt_cell.bgcolor(), TOKYO_BG);
+                            let fg = vt100_color_to_ratatui(vt_cell.fgcolor(), Color::Reset);
+                            let bg = vt100_color_to_ratatui(vt_cell.bgcolor(), Color::Reset);
                             let fg = if breathe != 0 { breathe_color(fg, breathe) } else { fg };
                             let bg = if breathe != 0 { breathe_color(bg, breathe) } else { bg };
                             let mut style = Style::default().fg(fg).bg(bg);
@@ -245,13 +223,12 @@ impl PaneGrid<'_> {
                             let ch = vt_cell.contents().chars().next().unwrap_or(' ');
                             cell.set_char(ch);
                         } else {
-                            let bg = if breathe != 0 { breathe_color(BG_PANE, breathe) } else { BG_PANE };
                             cell.set_char(' ');
-                            cell.set_style(Style::default().bg(bg));
+                            cell.set_style(Style::default());
                         }
                     } else {
                         cell.set_char(' ');
-                        cell.set_style(Style::default().bg(BG_PANE));
+                        cell.set_style(Style::default());
                     }
                 }
             }

@@ -82,14 +82,8 @@ fn handle_pty_event(app: &mut App, event: &crate::pty::PtyEvent) {
         }
         crate::pty::PtyEvent::Exited(pane_id, code) => {
             info!("Pane {} exited with code {}", pane_id, code);
-            let (symbol, color) = if *code == 0 {
-                ('✓', Color::Rgb(80, 220, 100))
-            } else {
-                ('✗', Color::Rgb(240, 80, 80))
-            };
-            app.set_status_message_colored(
-                format!("Pane {} {} ({})", pane_id, symbol, code),
-                color,
+            app.set_status_message(
+                format!("Pane {} exited ({})", pane_id, code),
             );
         }
     }
@@ -492,10 +486,7 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
     let area = frame.area();
     app.area = area;
 
-    // Background
-    let bg_block = Block::default()
-        .style(Style::default().bg(Color::Rgb(15, 18, 28)));
-    frame.render_widget(bg_block, area);
+    frame.render_widget(Clear, area);
 
     // Header bar at top (brand + tabs)
     let head_area = header_area(area);
@@ -525,12 +516,9 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
             height: content_height,
         };
 
-        let sidebar_bg = Color::Rgb(18, 22, 33);
         let sidebar_block = Block::default()
             .title(" Files ")
-            .borders(Borders::RIGHT)
-            .border_style(Style::default().fg(Color::Rgb(60, 65, 80)))
-            .style(Style::default().bg(sidebar_bg));
+            .borders(Borders::RIGHT);
 
         let inner = sidebar_block.inner(sidebar_area);
         frame.render_widget(sidebar_block, sidebar_area);
@@ -543,11 +531,7 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
             .take(max_rows)
             .map(|(name, is_dir)| {
                 let icon = if *is_dir { "📁 " } else { "  " };
-                let fg = if *is_dir { Color::Rgb(100, 180, 255) } else { Color::Rgb(180, 185, 200) };
-                ratatui::text::Span::styled(
-                    format!("{}{}", icon, name),
-                    Style::default().fg(fg).bg(sidebar_bg),
-                )
+                ratatui::text::Span::raw(format!("{}{}", icon, name))
             })
             .collect();
 
@@ -590,7 +574,7 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         active_pane: tab.active_pane(),
         parsers: &parsers,
         area: content_area,
-        focus_animation: None,
+
         resize_pane,
         pane_indices: &pane_indices,
         frame_count: app.frame_count,

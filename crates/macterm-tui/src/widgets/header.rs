@@ -1,13 +1,12 @@
 use macterm_core::Workspace;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Widget;
 
 const BRAND: &str = " MACTERMINAL ";
 
-/// Top header bar with brand gradient + tab bar
 pub struct HeaderBar<'a> {
     pub workspace: &'a Workspace,
     pub version: &'a str,
@@ -32,53 +31,22 @@ impl Widget for HeaderBar<'_> {
             return;
         }
 
-        let bg = Color::Rgb(12, 16, 24);
-        let brand_line_y = area.y;
-        let tab_line_y = area.y + 1;
+        let brand_line = Line::default()
+            .spans(vec![
+                Span::styled(BRAND.to_string(), Style::default().add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    " ".repeat(area.width.saturating_sub(BRAND.len() as u16 + 4) as usize),
+                    Style::default(),
+                ),
+                Span::styled(format!(" v{} ", self.version), Style::default()),
+            ]);
+        brand_line.render(Rect::new(area.x, area.y, area.width, 1), buf);
 
-        // Fill background for both lines
-        for y in area.y..area.y + area.height.min(2) {
-            for x in area.x..area.x + area.width {
-                if let Some(cell) = buf.cell_mut((x, y)) {
-                    cell.set_bg(bg);
-                    cell.set_char(' ');
-                }
-            }
-        }
-
-        let brand_style = Style::default()
-            .fg(Color::Rgb(150, 160, 200))
-            .bg(bg)
-            .add_modifier(Modifier::BOLD);
-
-        let version_text = format!(" v{} ", self.version);
-        let version_style = Style::default()
-            .fg(Color::Rgb(80, 85, 105))
-            .bg(bg);
-
-        let brand_width: usize = BRAND.len();
-        let version_width = version_text.len();
-        let filler_width = area.width.saturating_sub((brand_width + version_width) as u16) as usize;
-
-        let mut brand_line = Line::default();
-        brand_line.spans.push(Span::styled(BRAND.to_string(), brand_style));
-        if filler_width > 0 {
-            brand_line.spans.push(Span::styled(
-                " ".repeat(filler_width),
-                Style::default().bg(bg),
-            ));
-        }
-        brand_line.spans.push(Span::styled(version_text, version_style));
-
-        let brand_area = Rect::new(area.x, brand_line_y, area.width, 1);
-        brand_line.render(brand_area, buf);
-
-        // ── Line 2: Tab bar ──
-        render_tabs(self.workspace, tab_line_y, area, bg, buf, self.tab_scroll_offset);
+        render_tabs(self.workspace, area.y + 1, area, buf, self.tab_scroll_offset);
     }
 }
 
-fn render_tabs(workspace: &Workspace, y: u16, area: Rect, bg: Color, buf: &mut Buffer, scroll_offset: usize) {
+fn render_tabs(workspace: &Workspace, y: u16, area: Rect, buf: &mut Buffer, scroll_offset: usize) {
     let tabs = &workspace.tabs;
     let active_idx = workspace.active_tab;
     let tab_count = tabs.len().max(1);
@@ -102,25 +70,6 @@ fn render_tabs(workspace: &Workspace, y: u16, area: Rect, bg: Color, buf: &mut B
 
         let is_active = i == active_idx;
 
-        let tab_bg = if is_active {
-            Color::Rgb(22, 30, 48)
-        } else {
-            bg
-        };
-        let tab_fg = if is_active {
-            Color::Rgb(120, 180, 240)
-        } else {
-            Color::Rgb(100, 105, 125)
-        };
-
-        for cx in x..(x + tab_width).min(area.right() as usize) {
-            if let Some(cell) = buf.cell_mut((cx as u16, y)) {
-                cell.set_bg(tab_bg);
-                cell.set_fg(tab_fg);
-                cell.set_char(' ');
-            }
-        }
-
         let raw_title = &tab.title;
         let max_title_len = tab_width.saturating_sub(3) as usize;
         let short_title = if raw_title.len() > max_title_len {
@@ -128,20 +77,13 @@ fn render_tabs(workspace: &Workspace, y: u16, area: Rect, bg: Color, buf: &mut B
         } else {
             raw_title.clone()
         };
-        let title = if is_active {
-            format!(" {} ", short_title)
-        } else {
-            format!(" {} ", short_title)
-        };
+        let title = format!(" {} ", short_title);
 
-        let title_style = Style::default()
-            .bg(tab_bg)
-            .fg(tab_fg)
-            .add_modifier(if is_active {
-                Modifier::BOLD
-            } else {
-                Modifier::empty()
-            });
+        let title_style = if is_active {
+            Style::default().add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        };
 
         for (ci, ch) in title.chars().enumerate() {
             let cx = x + ci;
@@ -158,46 +100,21 @@ fn render_tabs(workspace: &Workspace, y: u16, area: Rect, bg: Color, buf: &mut B
             if sep_x < area.right() as usize {
                 if let Some(cell) = buf.cell_mut((sep_x as u16, y)) {
                     cell.set_char('│');
-                    cell.set_fg(Color::Rgb(40, 45, 60));
-                    cell.set_bg(bg);
                 }
             }
         }
     }
 
     if has_left {
-        if let Some(cell) = buf.cell_mut((area.x, y)) {
-            cell.set_char('<');
-            cell.set_fg(Color::Rgb(90, 95, 115));
-            cell.set_bg(bg);
-        }
-        if let Some(cell) = buf.cell_mut((area.x + 1, y)) {
-            cell.set_char(' ');
-            cell.set_fg(Color::Rgb(90, 95, 115));
-            cell.set_bg(bg);
-        }
+        if let Some(cell) = buf.cell_mut((area.x, y)) { cell.set_char('<'); }
+        if let Some(cell) = buf.cell_mut((area.x + 1, y)) { cell.set_char(' '); }
     }
     if has_right && area.right() >= 2 {
-        if let Some(cell) = buf.cell_mut((area.right().saturating_sub(2), y)) {
-            cell.set_char(' ');
-            cell.set_fg(Color::Rgb(90, 95, 115));
-            cell.set_bg(bg);
-        }
-        if let Some(cell) = buf.cell_mut((area.right().saturating_sub(1), y)) {
-            cell.set_char('>');
-            cell.set_fg(Color::Rgb(90, 95, 115));
-            cell.set_bg(bg);
-        }
+        if let Some(cell) = buf.cell_mut((area.right().saturating_sub(2), y)) { cell.set_char(' '); }
+        if let Some(cell) = buf.cell_mut((area.right().saturating_sub(1), y)) { cell.set_char('>'); }
     }
-
 }
 
-/// Calculate the area for the full header (brand + tabs)
 pub fn header_area(area: Rect) -> Rect {
-    Rect {
-        x: area.x,
-        y: area.y,
-        width: area.width,
-        height: 2,
-    }
+    Rect { x: area.x, y: area.y, width: area.width, height: 2 }
 }

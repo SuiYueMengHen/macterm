@@ -113,7 +113,7 @@ impl App {
                 command_input: String::new(),
                 status_message: None,
                 status_message_frame: 0,
-                status_message_color: Color::Rgb(255, 200, 100),
+                status_message_color: Color::Reset,
                 show_status_bar: true,
                 show_help: false,
                 frame_count: 0,
@@ -146,7 +146,7 @@ impl App {
     pub fn set_status_message(&mut self, msg: String) {
         self.status_message = Some(msg);
         self.status_message_frame = self.frame_count;
-        self.status_message_color = Color::Rgb(255, 200, 100);
+        self.status_message_color = Color::Reset;
     }
 
     /// Set a status message with a specific color (for success/error notifications)
