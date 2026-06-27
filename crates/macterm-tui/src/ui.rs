@@ -11,7 +11,7 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use ratatui::Terminal;
 use tokio::sync::mpsc;
 
@@ -636,6 +636,9 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
     }
 
     // Command palette overlay
+    // Each overlay: Clear → block with fg=Reset → text with fg=Reset.
+    // This ensures every pixel uses terminal defaults and no content bleeds through.
+
     if app.show_command_palette {
         let palette_area = Rect {
             x: area.width / 4,
@@ -644,9 +647,12 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
             height: 3,
         };
 
+        frame.render_widget(Clear, palette_area);
+
         let palette_block = Block::default()
             .title(" Command Palette ")
-            .borders(Borders::ALL);
+            .borders(Borders::ALL)
+            .style(Style::default().bg(Color::Reset));
 
         let input = if app.command_input.is_empty() {
             " Type a command... "
@@ -656,7 +662,10 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
 
         let palette_inner = palette_block.inner(palette_area);
         frame.render_widget(palette_block, palette_area);
-        frame.render_widget(Paragraph::new(input), palette_inner);
+        frame.render_widget(
+            Paragraph::new(input).style(Style::default().fg(Color::Reset)),
+            palette_inner,
+        );
     }
 
     if app.show_search {
@@ -666,6 +675,8 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
             width: area.width / 2,
             height: 3,
         };
+
+        frame.render_widget(Clear, search_area);
 
         let match_info = if app.search_matches.is_empty() {
             if app.search_query.is_empty() {
@@ -680,7 +691,8 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         let search_title = format!(" Find{}", match_info);
         let search_block = Block::default()
             .title(search_title.as_str())
-            .borders(Borders::ALL);
+            .borders(Borders::ALL)
+            .style(Style::default().bg(Color::Reset));
 
         let display = if app.search_query.is_empty() {
             " Type to search... "
@@ -690,17 +702,21 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
 
         let inner = search_block.inner(search_area);
         frame.render_widget(search_block, search_area);
-        frame.render_widget(Paragraph::new(display), inner);
+        frame.render_widget(
+            Paragraph::new(display).style(Style::default().fg(Color::Reset)),
+            inner,
+        );
     }
 
     if app.show_help {
         let mut rows: Vec<Line> = Vec::new();
-        macro_rules! sec { ($n:expr) => { rows.push(Line::from(Span::styled($n.to_string(), Style::default()))); }}
+        macro_rules! sec { ($n:expr) => { rows.push(Line::from(Span::styled($n.to_string(), Style::default().fg(Color::Reset)))); }}
         macro_rules! row { ($k:expr, $d:expr, $n:expr) => {{
-            let mut s: Vec<Span> = vec![Span::styled($k.to_string(), Style::default())];
-            if !$d.is_empty() { s.push(Span::styled($d.to_string(), Style::default())); }
-            if !$n.is_empty() { s.push(Span::styled(format!(" {}", $n), Style::default())); }
-            rows.push(Line::from(s));
+            let s = Style::default().fg(Color::Reset);
+            let mut v: Vec<Span> = vec![Span::styled($k.to_string(), s.clone())];
+            if !$d.is_empty() { v.push(Span::styled($d.to_string(), s.clone())); }
+            if !$n.is_empty() { v.push(Span::styled(format!(" {}", $n), s)); }
+            rows.push(Line::from(v));
         }}}
 
         sec!(" Panes ");
@@ -736,9 +752,11 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
             height: help_h.min(area.height),
         };
 
+        frame.render_widget(Clear, ha);
         let block = Block::default()
             .title(" Help ")
-            .borders(Borders::ALL);
+            .borders(Borders::ALL)
+            .style(Style::default().bg(Color::Reset));
         let inner = block.inner(ha);
         frame.render_widget(block, ha);
         frame.render_widget(Paragraph::new(ratatui::text::Text::from(rows)), inner);
@@ -761,19 +779,21 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
             height: dlg_h.min(area.height),
         };
 
+        frame.render_widget(Clear, da);
         let block = Block::default()
             .title(title)
-            .borders(Borders::ALL);
+            .borders(Borders::ALL)
+            .style(Style::default().bg(Color::Reset));
         let inner = block.inner(da);
         frame.render_widget(block, da);
 
         let text = vec![
-            Line::from(Span::styled(message, Style::default())),
+            Line::from(Span::styled(message, Style::default().fg(Color::Reset))),
             Line::from(""),
             Line::from(vec![
-                Span::styled(" [Y]es  ", Style::default()),
-                Span::styled("[N]o  ", Style::default()),
-                Span::styled("[Esc] ", Style::default()),
+                Span::styled(" [Y]es  ", Style::default().fg(Color::Reset)),
+                Span::styled("[N]o  ", Style::default().fg(Color::Reset)),
+                Span::styled("[Esc] ", Style::default().fg(Color::Reset)),
             ]),
         ];
         frame.render_widget(Paragraph::new(ratatui::text::Text::from(text)).alignment(Alignment::Center), inner);
