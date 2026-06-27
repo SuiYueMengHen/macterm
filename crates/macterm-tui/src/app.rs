@@ -194,7 +194,11 @@ impl App {
         let pane_rects = crate::ui::pane_rects_from_tree(&tab.root, content_area);
         for (pane_id, pane_rect) in &pane_rects {
             if let Some(session) = self.sessions.get_mut(pane_id) {
-                let _ = session.resize(pane_rect.width.max(20), pane_rect.height.max(5));
+                // Each pane renders with a border (1 cell on each side) and a 1-row title bar.
+                // The PTY content area is therefore: width-2 × height-3.
+                let pty_cols = pane_rect.width.saturating_sub(2).max(20);
+                let pty_rows = pane_rect.height.saturating_sub(3).max(5);
+                let _ = session.resize(pty_cols, pty_rows);
             }
         }
     }

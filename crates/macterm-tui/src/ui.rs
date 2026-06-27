@@ -33,6 +33,11 @@ pub async fn run(mut app: App) -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
     terminal.clear()?;
 
+    if let Ok(size) = terminal.size() {
+        app.area = Rect::new(0, 0, size.width, size.height);
+        app.resize_active_panes();
+    }
+
     // Async event stream + tick interval
     let mut events = EventStream::new();
     let tick_rate = Duration::from_millis(16); // ~60fps
@@ -203,18 +208,18 @@ fn handle_event(app: &mut App, event: &Event) -> Result<()> {
                     app.confirm_action = ConfirmAction::Quit;
                 }
 
-                // Split pane
-                KeyCode::Char('d') if key.modifiers == KeyModifiers::CONTROL => {
+                // Split pane (Alt to avoid conflict with shell Ctrl+D/E)
+                KeyCode::Char('d') if key.modifiers == KeyModifiers::ALT => {
                     app.split_active_pane(macterm_core::SplitDirection::Horizontal);
                     app.set_status_message("Split right".to_string());
                 }
-                KeyCode::Char('e') if key.modifiers == KeyModifiers::CONTROL => {
+                KeyCode::Char('e') if key.modifiers == KeyModifiers::ALT => {
                     app.split_active_pane(macterm_core::SplitDirection::Vertical);
                     app.set_status_message("Split down".to_string());
                 }
 
-                // Close pane (with confirmation)
-                KeyCode::Char('w') if key.modifiers == KeyModifiers::CONTROL => {
+                // Close pane (Alt to avoid conflict with shell Ctrl+W)
+                KeyCode::Char('w') if key.modifiers == KeyModifiers::ALT => {
                     if app.workspace.active_tab().pane_count() > 1 {
                         app.confirm_action = ConfirmAction::ClosePane;
                     } else {
@@ -224,10 +229,7 @@ fn handle_event(app: &mut App, event: &Event) -> Result<()> {
                 }
 
                 // New tab
-                KeyCode::Char('t')
-                    if key.modifiers == KeyModifiers::ALT
-                        || key.modifiers == KeyModifiers::CONTROL =>
-                {
+                KeyCode::Char('t') if key.modifiers == KeyModifiers::ALT => {
                     let tab_num = app.workspace.tab_count() + 1;
                     app.workspace.add_tab(format!("term-{}", tab_num));
 
@@ -283,22 +285,22 @@ fn handle_event(app: &mut App, event: &Event) -> Result<()> {
                     app.focus_prev_pane();
                 }
 
-                // Command palette
-                KeyCode::Char('p') if key.modifiers == KeyModifiers::CONTROL => {
+                // Command palette (Alt to avoid conflict with shell Ctrl+P)
+                KeyCode::Char('p') if key.modifiers == KeyModifiers::ALT => {
                     app.show_command_palette = !app.show_command_palette;
                     app.command_input.clear();
                 }
 
-                // Toggle file tree
-                KeyCode::Char('f') if key.modifiers == KeyModifiers::CONTROL => {
+                // Toggle file tree (Alt to avoid conflict with shell Ctrl+F)
+                KeyCode::Char('f') if key.modifiers == KeyModifiers::ALT => {
                     app.show_file_tree = !app.show_file_tree;
                     if app.show_file_tree {
                         app.refresh_file_tree();
                     }
                 }
 
-                // Help overlay
-                KeyCode::Char('h') if key.modifiers == KeyModifiers::CONTROL => {
+                // Help overlay (Alt to avoid conflict with shell Ctrl+H)
+                KeyCode::Char('h') if key.modifiers == KeyModifiers::ALT => {
                     app.show_help = !app.show_help;
                 }
 
@@ -491,7 +493,7 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
     // Header bar at top (brand + tabs)
     let head_area = header_area(area);
     frame.render_widget(
-        HeaderBar::new(&app.workspace, "0.1.0", app.frame_count, app.tab_scroll_offset),
+        HeaderBar::new(&app.workspace, env!("CARGO_PKG_VERSION"), app.frame_count, app.tab_scroll_offset),
         head_area,
     );
 
@@ -613,7 +615,7 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
                 message: msg,
                 message_color: app.status_message_color,
                 show_file_tree: app.show_file_tree,
-                version: "0.1.0",
+                version: env!("CARGO_PKG_VERSION"),
             },
             status_area,
         );
@@ -704,21 +706,21 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         }}}
 
         sec!(" Panes ");
-        row!(" Ctrl+D      ", "Split right   ", "(horizontal)");
-        row!(" Ctrl+E      ", "Split down    ", "(vertical)");
-        row!(" Ctrl+W      ", "Close pane    ", "");
+        row!(" Alt+D       ", "Split right   ", "(horizontal)");
+        row!(" Alt+E       ", "Split down    ", "(vertical)");
+        row!(" Alt+W       ", "Close pane    ", "");
         row!(" Ctrl+↑↓←→  ", "Focus pane    ", "next/prev");
         rows.push(Line::from(""));
         sec!(" Tabs ");
-        row!(" Ctrl+T      ", "New tab       ", "");
+        row!(" Alt+T       ", "New tab       ", "");
         row!(" Alt+← →     ", "Switch tab    ", "prev/next");
         row!(" Alt+1-9     ", "Switch tab    ", "by number");
         rows.push(Line::from(""));
         sec!(" Interface ");
-        row!(" Ctrl+P      ", "Command palette", "");
-        row!(" Ctrl+F      ", "File tree     ", "toggle");
+        row!(" Alt+P       ", "Command palette", "");
+        row!(" Alt+F       ", "File tree     ", "toggle");
         row!(" Alt+S       ", "Search        ", "find in pane");
-        row!(" Ctrl+H      ", "Help          ", "this screen");
+        row!(" Alt+H       ", "Help          ", "this screen");
         row!(" Ctrl+Q      ", "Quit          ", "");
         rows.push(Line::from(""));
         sec!(" Shell input ");

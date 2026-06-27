@@ -11,24 +11,21 @@
 ## Features
 
 - **Multi-tab terminals** — multiple terminal sessions in one window, switch with `Alt+←→`
-- **Split panes** — split horizontally (`Ctrl+D`) or vertically (`Ctrl+E`) into resizable panes
+- **Split panes** — split horizontally (`Alt+D`) or vertically (`Alt+E`) into resizable panes
 - **Drag-to-resize** — click and drag split borders to resize panes in real-time
 - **Pane navigation** — `Ctrl+↑↓←→` to move focus between panes
-- **Branded header** — animated wave gradient "MACTERMINAL" logo with tab bar
+- **Brand header** — bold "MACTERMINAL" logo with tab bar
 - **Tab scrolling** — `◀▶` arrows when tabs overflow, auto-scroll to active tab
-- **Pane title bar** — colored 1-line header inside each pane with `[N]` label
+- **Pane title bar** — 1-line header inside each pane with `[N]` label
 - **Pane number overlays** — numbered `[1]` `[2]` labels in pane borders
-- **Focus breathing** — subtle brightness pulse on the active pane's content
-- **Glowing border** — sinusoidal cyan glow on the active pane border
 - **Rounded borders** — `╭─╮` style pane borders with `║═╬` double-line separators
 - **Search overlay** — `Alt+S` to find text in the active pane, Enter/Tab navigation
 - **Confirmation dialogs** — confirm before closing a pane or quitting
-- **Help overlay** — `Ctrl+H` shows all keybindings
-- **Command palette** — `Ctrl+P` for quick commands
-- **File tree sidebar** — `Ctrl+F` to toggle, reads live directory listing (sorted, dirs first)
-- **Tokyo Night theme** — calibrated ANSI color palette for cohesive dark look
-- **Status bar** — tab count, pane count, colored status messages with auto-fade
-- **Command exit notifications** — green ✓ for success, red ✗ for errors
+- **Help overlay** — `Alt+H` shows all keybindings
+- **Command palette** — `Alt+P` for quick commands
+- **File tree sidebar** — `Alt+F` to toggle, reads live directory listing (sorted, dirs first)
+- **Terminal-default colors** — all UI chrome uses terminal theme colors, no hardcoded palette
+- **Status bar** — tab count, pane count, status messages with auto-fade
 - **Async event loop** — 60fps rendering via `tokio::select!` — no input lag
 - **Proper terminal emulation** — vt100 parser with full ANSI/ECMA-48 support
 - **SIGWINCH propagation** — PTY sessions properly resize when the window changes
@@ -70,22 +67,22 @@ Options:
 |---|---|
 | `Ctrl+Q` | Quit (with confirmation) |
 | **Panes** | |
-| `Ctrl+D` | Split pane right (horizontal) |
-| `Ctrl+E` | Split pane down (vertical) |
-| `Ctrl+W` | Close active pane (with confirmation) |
+| `Alt+D` | Split pane right (horizontal) |
+| `Alt+E` | Split pane down (vertical) |
+| `Alt+W` | Close active pane (with confirmation) |
 | `Ctrl+↑↓←→` | Focus next/previous pane |
 | **Mouse** | |
 | Click pane | Focus pane |
 | Drag border | Resize split panes |
 | **Tabs** | |
-| `Ctrl+T` / `Alt+T` | New tab |
+| `Alt+T` | New tab |
 | `Alt+←→` | Switch tab prev/next (auto-scroll) |
 | `Alt+1-9` | Switch to tab by number |
 | **Interface** | |
-| `Ctrl+P` | Command palette |
-| `Ctrl+F` | File tree (toggle) |
+| `Alt+P` | Command palette |
+| `Alt+F` | File tree (toggle) |
 | `Alt+S` | Search in active pane |
-| `Ctrl+H` | Help overlay |
+| `Alt+H` | Help overlay |
 | **Search** (when open) | |
 | `Enter` / `Tab` | Next match |
 | `Shift+Tab` | Previous match |
@@ -94,13 +91,27 @@ Options:
 | `Enter` / `Y` | Confirm action |
 | `Esc` / `N` / `Q` | Cancel |
 | **Shell Input** | |
-| `Ctrl+C` / `Ctrl+D` / etc. | Standard control codes sent to shell |
+| `Ctrl+letter` | Standard control codes (EOF, SIGINT, etc.) |
 | `Alt+letter` | Alt codes (ESC+letter) |
 | Arrow keys, Home, End, etc. | Passthrough to shell |
+| ← All Ctrl+letter combos pass through to the shell — no TUI conflicts | |
 
 ---
 
 ## Changelog
+
+### 0.2.3 — Color Strip, Keyboard Conflict Fix, PTY Size Fix
+
+- **Color stripped from entire app**: all custom `Color::Rgb(...)` removed — header, status bar, pane borders, title bars, overlays, sidebar all use terminal defaults. No hardcoded palette anywhere.
+- **Dead code removal**: `ColorAnimation`, `AnimationTimeline`, `animated_border`, `focus_animation` removed.
+- **Keyboard conflict fix**: all TUI shortcuts moved from `Ctrl+letter` (which conflicted with shell readline) to `Alt+letter`:
+  - `Alt+D` split right, `Alt+E` split down, `Alt+W` close pane
+  - `Alt+T` new tab, `Alt+P` command palette, `Alt+F` file tree, `Alt+H` help
+  - `Ctrl+Q` quit kept (standard TUI convention)
+  - All `Ctrl+letter` combos now pass through to the shell properly
+- **PTY size fix**: `resize_active_panes()` now accounts for border (2 cols, 2 rows) and title bar (1 row) — shell output no longer overflows or wraps incorrectly
+- **Initial window sizing fix**: PTY is resized to terminal dimensions on startup, not left at 80×24
+- **Version display fix**: version number no longer truncated in header; now reads from `CARGO_PKG_VERSION`
 
 ### 0.2.2 — README & Release Packaging
 
@@ -233,7 +244,6 @@ macterm/
 │       ├── src/app.rs       # App state, PTY management
 │       ├── src/ui.rs        # Event loop, keyboard/mouse handlers
 │       ├── src/pty.rs       # PTY session (portable-pty + vt100)
-│       ├── src/animations.rs # ColorAnimation lerp/easing
 │       └── src/widgets/
 │           ├── pane_grid.rs # Split tree rendering, border drag feedback
 │           ├── header.rs    # Gradient MACTERMINAL header + tab bar

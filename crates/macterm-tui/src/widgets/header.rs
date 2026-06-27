@@ -31,14 +31,13 @@ impl Widget for HeaderBar<'_> {
             return;
         }
 
+        let version_str = format!(" v{} ", self.version);
+        let filler_len = area.width.saturating_sub(BRAND.len() as u16 + version_str.len() as u16);
         let brand_line = Line::default()
             .spans(vec![
                 Span::styled(BRAND.to_string(), Style::default().add_modifier(Modifier::BOLD)),
-                Span::styled(
-                    " ".repeat(area.width.saturating_sub(BRAND.len() as u16 + 4) as usize),
-                    Style::default(),
-                ),
-                Span::styled(format!(" v{} ", self.version), Style::default()),
+                Span::styled(" ".repeat(filler_len as usize), Style::default()),
+                Span::styled(version_str, Style::default()),
             ]);
         brand_line.render(Rect::new(area.x, area.y, area.width, 1), buf);
 
