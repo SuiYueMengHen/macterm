@@ -605,9 +605,9 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
                 let (cursor_row, cursor_col) = guard.screen().cursor_position();
                 let pane_rects = pane_rects_from_tree(&tab.root, content_area);
                 if let Some(pane_area) = pane_rects.get(&active_pane_id) {
-                    // Account for the 1-cell border rendered by PaneGrid::render_pane
-                    let inner_x = pane_area.x.saturating_add(1);
-                    let inner_y = pane_area.y.saturating_add(1);
+                    // render_pane: area → border(+1) → title_bar(+1) → content
+                    let inner_x = pane_area.x.saturating_add(1);      // border left
+                    let inner_y = pane_area.y.saturating_add(2);      // border top + title bar
                     let cursor_x = inner_x.saturating_add(cursor_col).min(area.right().saturating_sub(1));
                     let cursor_y = inner_y.saturating_add(cursor_row).min(area.bottom().saturating_sub(1));
                     frame.set_cursor_position((cursor_x, cursor_y));

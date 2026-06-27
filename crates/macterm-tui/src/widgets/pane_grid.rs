@@ -126,23 +126,24 @@ impl PaneGrid<'_> {
         let is_active = pane_id == self.active_pane;
         let is_resizing = self.resize_pane.is_some_and(|p| p == pane_id);
 
-        // Focus breathing: subtle brightness modulation on active pane content
-        let breathe_amount: i16 = if is_active {
-            let breath = (self.frame_count as f32 * 0.03).sin() * 8.0; // ±8 brightness
-            breath as i16
-        } else {
-            0
-        };
+        // Breathing removed: per-frame sin() on all cells caused flicker.
+        let breathe_amount: i16 = 0;
 
         let border_color = if is_resizing {
             BORDER_RESIZE
         } else if is_active {
-            // Subtle breathing glow on the active pane border
-            let pulse = ((self.frame_count as f32 * 0.04).sin() * 20.0) as u8;
+            // Quantized glow: 4 discrete steps → no visible flicker
+            let phase = (self.frame_count as f32 * 0.01) % 4.0;
+            let boost = match phase as u8 {
+                0 => 0u8,
+                1 => 15u8,
+                2 => 0u8,
+                3 | _ => 0u8,
+            };
             Color::Rgb(
                 0,
-                (190u16).saturating_add(pulse as u16).min(255) as u8,
-                255u8.min(255u8.saturating_add(pulse)),
+                (180u16 + boost as u16).min(255) as u8,
+                (240u16 + boost as u16).min(255) as u8,
             )
         } else {
             BORDER_INACTIVE
