@@ -41,7 +41,7 @@ impl Widget for StatusBar<'_> {
             self.active_tab + 1,
             self.pane_count
         );
-        let left_style = Style::default().bg(bg).fg(Color::Rgb(0, 180, 255));
+        let left_style = Style::default().bg(bg).fg(Color::Rgb(100, 140, 180));
         let left_len = left_text.len();
         let left_span = Span::styled(left_text, left_style);
         let left = Paragraph::new(left_span);
@@ -66,28 +66,14 @@ impl Widget for StatusBar<'_> {
             Paragraph::new(msg_span).render(msg_area, buf);
         }
 
-        // Right section: keybindings
+        // Right section: keybindings (muted single color)
+        let hint_fg = Color::Rgb(90, 95, 115);
         let right_parts = vec![
-            Span::styled(
-                " ^D↓ ",
-                Style::default().bg(bg).fg(Color::Rgb(100, 200, 100)),
-            ),
-            Span::styled(
-                " ^E→ ",
-                Style::default().bg(bg).fg(Color::Rgb(100, 200, 100)),
-            ),
-            Span::styled(
-                " ^Ttab ",
-                Style::default().bg(bg).fg(Color::Rgb(200, 150, 100)),
-            ),
-            Span::styled(
-                " Alt1-9 ",
-                Style::default().bg(bg).fg(Color::Rgb(150, 150, 220)),
-            ),
-            Span::styled(
-                " ^Qquit ",
-                Style::default().bg(bg).fg(Color::Rgb(200, 100, 100)),
-            ),
+            Span::styled(" ^D↓ ", Style::default().bg(bg).fg(hint_fg)),
+            Span::styled(" ^E→ ", Style::default().bg(bg).fg(hint_fg)),
+            Span::styled(" ^Ttab ", Style::default().bg(bg).fg(hint_fg)),
+            Span::styled(" Alt1-9 ", Style::default().bg(bg).fg(hint_fg)),
+            Span::styled(" ^Qquit ", Style::default().bg(bg).fg(hint_fg)),
         ];
 
         let right_text: String = right_parts.iter().map(|s| s.content.as_ref()).collect();

@@ -126,25 +126,12 @@ impl PaneGrid<'_> {
         let is_active = pane_id == self.active_pane;
         let is_resizing = self.resize_pane.is_some_and(|p| p == pane_id);
 
-        // Breathing removed: per-frame sin() on all cells caused flicker.
         let breathe_amount: i16 = 0;
 
         let border_color = if is_resizing {
             BORDER_RESIZE
         } else if is_active {
-            // Quantized glow: 4 discrete steps → no visible flicker
-            let phase = (self.frame_count as f32 * 0.01) % 4.0;
-            let boost = match phase as u8 {
-                0 => 0u8,
-                1 => 15u8,
-                2 => 0u8,
-                3 | _ => 0u8,
-            };
-            Color::Rgb(
-                0,
-                (180u16 + boost as u16).min(255) as u8,
-                (240u16 + boost as u16).min(255) as u8,
-            )
+            Color::Rgb(70, 140, 210)
         } else {
             BORDER_INACTIVE
         };
@@ -162,24 +149,17 @@ impl PaneGrid<'_> {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_set(border::ROUNDED)
-            .border_style(
-                Style::default()
-                    .fg(border_color)
-                    .add_modifier(if is_active { Modifier::BOLD } else { Modifier::empty() }),
-            )
+            .border_style(Style::default().fg(border_color))
             .title(Span::styled(
                 title.as_str(),
-                Style::default()
-                    .fg(border_color)
-                    .add_modifier(if is_active { Modifier::BOLD } else { Modifier::empty() }),
+                Style::default().fg(border_color),
             ));
 
         let inner = block.inner(area);
         block.render(area, buf);
 
-        // ── Pane title bar (B5) ──
-        let bar_bg = if is_active { Color::Rgb(28, 38, 58) } else { Color::Rgb(22, 27, 38) };
-        let bar_fg = if is_active { Color::Rgb(130, 190, 255) } else { Color::Rgb(100, 110, 130) };
+        let bar_bg = if is_active { Color::Rgb(24, 32, 48) } else { Color::Rgb(20, 25, 36) };
+        let bar_fg = if is_active { Color::Rgb(110, 150, 200) } else { Color::Rgb(80, 90, 110) };
         let bar_y = inner.y;
         let bar_h = if inner.height > 3 { 1u16 } else { 0u16 };
         if bar_h > 0 {
@@ -198,7 +178,6 @@ impl PaneGrid<'_> {
                         cell.set_char(ch);
                         cell.set_bg(bar_bg);
                         cell.set_fg(bar_fg);
-                        if is_active { cell.set_style(Style::default().add_modifier(Modifier::BOLD)); }
                     }
                 }
             }
