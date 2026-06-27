@@ -9,7 +9,7 @@ use futures::StreamExt;
 use log::{info, trace};
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Alignment, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use ratatui::Terminal;
@@ -649,8 +649,8 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         let palette_block = Block::default()
             .title(" Command Palette ")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Rgb(0, 180, 255)))
-            .style(Style::default().bg(Color::Rgb(25, 30, 45)));
+            .border_style(Style::default().fg(Color::Rgb(70, 100, 140)))
+            .style(Style::default().bg(Color::Rgb(22, 26, 38)));
 
         let input = if app.command_input.is_empty() {
             " Type a command... "
@@ -688,8 +688,8 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         let search_block = Block::default()
             .title(search_title.as_str())
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Rgb(100, 200, 255)))
-            .style(Style::default().bg(Color::Rgb(20, 25, 40)));
+            .border_style(Style::default().fg(Color::Rgb(70, 100, 140)))
+            .style(Style::default().bg(Color::Rgb(20, 24, 36)));
 
         let display = if app.search_query.is_empty() {
             " Type to search... "
@@ -704,10 +704,10 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
 
     // Help overlay
     if app.show_help {
-        let hdr = Style::default().fg(Color::Rgb(0, 180, 255)).add_modifier(Modifier::BOLD);
-        let key = Style::default().fg(Color::Rgb(255, 200, 100)).add_modifier(Modifier::BOLD);
-        let desc = Style::default().fg(Color::Rgb(200, 200, 220));
-        let note = Style::default().fg(Color::Rgb(130, 135, 155));
+        let hdr = Style::default().fg(Color::Rgb(100, 140, 180));
+        let key = Style::default().fg(Color::Rgb(150, 160, 180));
+        let desc = Style::default().fg(Color::Rgb(130, 140, 160));
+        let note = Style::default().fg(Color::Rgb(90, 100, 120));
 
         let mut rows: Vec<Line> = Vec::new();
         macro_rules! sec { ($n:expr) => { rows.push(Line::from(Span::styled($n.to_string(), hdr))); }}
@@ -753,9 +753,9 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
 
         frame.render_widget(Clear, ha);
         let block = Block::default()
-            .title(" MACTERMINAL Help ")
+            .title(" Help ")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Rgb(0, 200, 255)))
+            .border_style(Style::default().fg(Color::Rgb(70, 100, 140)))
             .style(Style::default().bg(Color::Rgb(18, 22, 33)));
         let inner = block.inner(ha);
         frame.render_widget(block, ha);
@@ -783,36 +783,21 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         let block = Block::default()
             .title(title)
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Rgb(240, 180, 50)))
-            .style(Style::default().bg(Color::Rgb(25, 20, 15)));
+            .border_style(Style::default().fg(Color::Rgb(100, 120, 140)))
+            .style(Style::default().bg(Color::Rgb(22, 25, 32)));
         let inner = block.inner(da);
         frame.render_widget(block, da);
 
         let text = vec![
             Line::from(Span::styled(
                 message,
-                Style::default().fg(Color::Rgb(220, 220, 200)),
+                Style::default().fg(Color::Rgb(150, 160, 170)),
             )),
             Line::from(""),
             Line::from(vec![
-                Span::styled(
-                    " [Y]es  ",
-                    Style::default()
-                        .fg(Color::Rgb(80, 220, 100))
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(
-                    "[N]o  ",
-                    Style::default()
-                        .fg(Color::Rgb(200, 200, 220))
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(
-                    "[Esc] ",
-                    Style::default()
-                        .fg(Color::Rgb(200, 100, 100))
-                        .add_modifier(Modifier::BOLD),
-                ),
+                Span::styled(" [Y]es  ", Style::default().fg(Color::Rgb(90, 140, 90))),
+                Span::styled("[N]o  ", Style::default().fg(Color::Rgb(140, 150, 160))),
+                Span::styled("[Esc] ", Style::default().fg(Color::Rgb(140, 90, 90))),
             ]),
         ];
         frame.render_widget(Paragraph::new(ratatui::text::Text::from(text)).alignment(Alignment::Center), inner);
