@@ -646,8 +646,7 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
 
         let palette_block = Block::default()
             .title(" Command Palette ")
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Rgb(120, 130, 150)));
+            .borders(Borders::ALL);
 
         let input = if app.command_input.is_empty() {
             " Type a command... "
@@ -656,23 +655,10 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         };
 
         let palette_inner = palette_block.inner(palette_area);
-        for y in palette_inner.y..palette_inner.bottom() {
-            for x in palette_inner.x..palette_inner.right() {
-                if let Some(cell) = frame.buffer_mut().cell_mut((x, y)) {
-                    cell.set_bg(Color::Rgb(15, 18, 28));
-                    cell.set_fg(Color::Reset);
-                    cell.set_char(' ');
-                }
-            }
-        }
         frame.render_widget(palette_block, palette_area);
-        frame.render_widget(
-            Paragraph::new(input).style(Style::default().fg(Color::Rgb(200, 205, 220))),
-            palette_inner,
-        );
+        frame.render_widget(Paragraph::new(input), palette_inner);
     }
 
-    // Search overlay (E1)
     if app.show_search {
         let search_area = Rect {
             x: area.width / 4,
@@ -694,8 +680,7 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         let search_title = format!(" Find{}", match_info);
         let search_block = Block::default()
             .title(search_title.as_str())
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Rgb(120, 130, 150)));
+            .borders(Borders::ALL);
 
         let display = if app.search_query.is_empty() {
             " Type to search... "
@@ -704,35 +689,17 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         };
 
         let inner = search_block.inner(search_area);
-        for y in inner.y..inner.bottom() {
-            for x in inner.x..inner.right() {
-                if let Some(cell) = frame.buffer_mut().cell_mut((x, y)) {
-                    cell.set_bg(Color::Rgb(15, 18, 28));
-                    cell.set_fg(Color::Reset);
-                    cell.set_char(' ');
-                }
-            }
-        }
         frame.render_widget(search_block, search_area);
-        frame.render_widget(
-            Paragraph::new(display).style(Style::default().fg(Color::Rgb(200, 205, 220))),
-            inner,
-        );
+        frame.render_widget(Paragraph::new(display), inner);
     }
 
-    // Help overlay
     if app.show_help {
-        let hdr = Style::default().fg(Color::Rgb(100, 140, 180));
-        let key = Style::default().fg(Color::Rgb(150, 160, 180));
-        let desc = Style::default().fg(Color::Rgb(130, 140, 160));
-        let note = Style::default().fg(Color::Rgb(90, 100, 120));
-
         let mut rows: Vec<Line> = Vec::new();
-        macro_rules! sec { ($n:expr) => { rows.push(Line::from(Span::styled($n.to_string(), hdr))); }}
+        macro_rules! sec { ($n:expr) => { rows.push(Line::from(Span::styled($n.to_string(), Style::default()))); }}
         macro_rules! row { ($k:expr, $d:expr, $n:expr) => {{
-            let mut s: Vec<Span> = vec![Span::styled($k.to_string(), key)];
-            if !$d.is_empty() { s.push(Span::styled($d.to_string(), desc)); }
-            if !$n.is_empty() { s.push(Span::styled(format!(" {}", $n), note)); }
+            let mut s: Vec<Span> = vec![Span::styled($k.to_string(), Style::default())];
+            if !$d.is_empty() { s.push(Span::styled($d.to_string(), Style::default())); }
+            if !$n.is_empty() { s.push(Span::styled(format!(" {}", $n), Style::default())); }
             rows.push(Line::from(s));
         }}}
 
@@ -771,18 +738,8 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
 
         let block = Block::default()
             .title(" Help ")
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Rgb(120, 130, 150)));
+            .borders(Borders::ALL);
         let inner = block.inner(ha);
-        for y in ha.y..ha.bottom() {
-            for x in ha.x..ha.right() {
-                if let Some(cell) = frame.buffer_mut().cell_mut((x, y)) {
-                    cell.set_bg(Color::Rgb(15, 18, 28));
-                    cell.set_fg(Color::Reset);
-                    cell.set_char(' ');
-                }
-            }
-        }
         frame.render_widget(block, ha);
         frame.render_widget(Paragraph::new(ratatui::text::Text::from(rows)), inner);
     }
@@ -806,30 +763,17 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
 
         let block = Block::default()
             .title(title)
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Rgb(120, 130, 150)));
+            .borders(Borders::ALL);
         let inner = block.inner(da);
-        for y in da.y..da.bottom() {
-            for x in da.x..da.right() {
-                if let Some(cell) = frame.buffer_mut().cell_mut((x, y)) {
-                    cell.set_bg(Color::Rgb(15, 18, 28));
-                    cell.set_fg(Color::Reset);
-                    cell.set_char(' ');
-                }
-            }
-        }
         frame.render_widget(block, da);
 
         let text = vec![
-            Line::from(Span::styled(
-                message,
-                Style::default().fg(Color::Rgb(150, 160, 170)),
-            )),
+            Line::from(Span::styled(message, Style::default())),
             Line::from(""),
             Line::from(vec![
-                Span::styled(" [Y]es  ", Style::default().fg(Color::Rgb(90, 140, 90))),
-                Span::styled("[N]o  ", Style::default().fg(Color::Rgb(140, 150, 160))),
-                Span::styled("[Esc] ", Style::default().fg(Color::Rgb(140, 90, 90))),
+                Span::styled(" [Y]es  ", Style::default()),
+                Span::styled("[N]o  ", Style::default()),
+                Span::styled("[Esc] ", Style::default()),
             ]),
         ];
         frame.render_widget(Paragraph::new(ratatui::text::Text::from(text)).alignment(Alignment::Center), inner);
