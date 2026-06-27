@@ -7,9 +7,9 @@ resolver = "2"
 
 [package]
 name = "macterm"
-version = "0.1.0"
+version = "0.2.3"
 edition = "2021"
-description = "A modern multi-terminal TUI multiplexer for macOS with beautiful animations"
+description = "A modern multi-terminal TUI multiplexer for macOS"
 
 [dependencies]
 macterm-tui = { path = "crates/macterm-tui" }
