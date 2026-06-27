@@ -236,6 +236,22 @@ fn handle_event(app: &mut App, event: &Event) -> Result<()> {
                     }
                 }
 
+                // Close active tab
+                KeyCode::Char('W') if key.modifiers == KeyModifiers::CONTROL => {
+                    app.close_active_tab();
+                    app.set_status_message("Closed tab".to_string());
+                }
+
+                // Zoom toggle active pane
+                KeyCode::Char('z') if key.modifiers == KeyModifiers::CONTROL => {
+                    app.toggle_zoom();
+                    if app.zoom_root.is_some() {
+                        app.set_status_message("Zoomed pane".to_string());
+                    } else {
+                        app.set_status_message("Unzoomed".to_string());
+                    }
+                }
+
                 // New tab
                 KeyCode::Char('t')
                     if key.modifiers == KeyModifiers::ALT
@@ -364,10 +380,10 @@ fn handle_event(app: &mut App, event: &Event) -> Result<()> {
                     app.write_to_active_pane(b"\x1b[3~");
                 }
                 KeyCode::PageUp => {
-                    app.write_to_active_pane(b"\x1b[5~");
+                    app.scroll_active_pane(1);
                 }
                 KeyCode::PageDown => {
-                    app.write_to_active_pane(b"\x1b[6~");
+                    app.scroll_active_pane(-1);
                 }
                 _ => {}
             }
@@ -430,6 +446,12 @@ fn handle_event(app: &mut App, event: &Event) -> Result<()> {
                 }
                 MouseEventKind::Up(btn) if btn == crossterm::event::MouseButton::Left => {
                     app.end_resize_drag();
+                }
+                MouseEventKind::ScrollUp => {
+                    app.scroll_active_pane(1);
+                }
+                MouseEventKind::ScrollDown => {
+                    app.scroll_active_pane(-1);
                 }
                 _ => {}
             }
@@ -720,10 +742,14 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         row!(" Ctrl+D      ", "Split right   ", "(horizontal)");
         row!(" Ctrl+E      ", "Split down    ", "(vertical)");
         row!(" Ctrl+W      ", "Close pane    ", "");
+        row!(" Ctrl+Z      ", "Zoom pane     ", "toggle");
         row!(" Ctrl+↑↓←→  ", "Focus pane    ", "next/prev");
+        row!(" PgUp/PgDn   ", "Scroll back   ", "1 page");
+        row!(" Mouse wheel  ", "Scroll back   ", "up/down");
         rows.push(Line::from(""));
         sec!(" Tabs ");
         row!(" Ctrl+T      ", "New tab       ", "");
+        row!(" Ctrl+Shift+W", "Close tab     ", "");
         row!(" Alt+← →     ", "Switch tab    ", "prev/next");
         row!(" Alt+1-9     ", "Switch tab    ", "by number");
         rows.push(Line::from(""));

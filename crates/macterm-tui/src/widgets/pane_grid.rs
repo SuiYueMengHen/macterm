@@ -113,14 +113,23 @@ impl PaneGrid<'_> {
 
         let border_color = Color::Reset;
 
-        // Build title with pane number
+        // Build title with pane number and scroll indicator
         let pane_num = self.pane_indices.get(&pane_id).copied().unwrap_or(0);
         let id_str = pane_id.to_string();
         let short_id = &id_str[..8.min(id_str.len())];
+        let scroll_indicator = self.parsers.get(&pane_id).and_then(|parser| {
+            parser.try_read().ok().and_then(|guard| {
+                if guard.screen().scrollback() > 0 {
+                    Some(" [↑]")
+                } else {
+                    None
+                }
+            })
+        }).unwrap_or("");
         let title = if pane_num > 0 {
-            format!(" {} [{}] ", short_id, pane_num)
+            format!(" {} [{}]{} ", short_id, pane_num, scroll_indicator)
         } else {
-            format!(" {} ", short_id)
+            format!(" {}{} ", short_id, scroll_indicator)
         };
 
         let block = Block::default()

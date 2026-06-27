@@ -70,12 +70,16 @@ Options:
 | `Ctrl+D` | Split pane right (horizontal) |
 | `Ctrl+E` | Split pane down (vertical) |
 | `Ctrl+W` | Close active pane (with confirmation) |
+| `Ctrl+Z` | Zoom / unzoom active pane |
 | `Ctrl+↑↓←→` | Focus next/previous pane |
+| `PgUp` / `PgDn` | Scroll back / forward (1 page) |
 | **Mouse** | |
 | Click pane | Focus pane |
 | Drag border | Resize split panes |
+| Scroll wheel | Scroll back / forward |
 | **Tabs** | |
 | `Ctrl+T` | New tab |
+| `Ctrl+Shift+W` | Close active tab |
 | `Alt+←→` | Switch tab prev/next (auto-scroll) |
 | `Alt+1-9` | Switch to tab by number |
 | **Interface** | |
@@ -99,6 +103,14 @@ Options:
 ---
 
 ## Changelog
+
+### 0.2.4 — Scrollback, Zoom, Tab Close, Mouse Wheel
+
+- **Scrollback support**: `PgUp`/`PgDn` scroll the active pane back one page. Scroll indicator `[↑]` appears in the pane title bar when scrolled. Any key input returns to bottom.
+- **Mouse wheel scroll**: `ScrollUp`/`ScrollDown` events scroll the active pane back/forward (1 page per tick).
+- **Pane zoom**: `Ctrl+Z` toggles full-screen zoom on the active pane, hiding other splits. `Ctrl+Z` again restores the layout.
+- **Tab close**: `Ctrl+Shift+W` closes the active tab and all its panes.
+- **Auto-scroll reset**: writing to a pane (keyboard input) automatically resets scrollback to bottom.
 
 ### 0.2.3 — Color Strip, Keyboard Conflict Fix, PTY Size Fix
 

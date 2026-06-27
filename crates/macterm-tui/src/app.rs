@@ -66,6 +66,8 @@ pub struct App {
     pub resize_state: ResizeState,
     /// Pending confirmation action (E4/E5: close pane / quit confirmation)
     pub confirm_action: ConfirmAction,
+    /// Saved split tree when zoomed; None = normal view
+    pub zoom_root: Option<Box<SplitNode>>,
     /// Scroll offset for the tab bar (A4: tab scrolling)
     pub tab_scroll_offset: usize,
     /// Cached file tree entries (D1): (filename, is_directory)
@@ -121,6 +123,7 @@ impl App {
                 frame_count: 0,
                 resize_state: ResizeState::Idle,
                 confirm_action: ConfirmAction::None,
+                zoom_root: None,
                 tab_scroll_offset: 0,
                 file_tree_entries: Vec::new(),
                 file_tree_scroll: 0,
@@ -208,8 +211,14 @@ impl App {
 
     /// Write input to the active pane
     pub fn write_to_active_pane(&mut self, data: &[u8]) {
+        // Reset scrollback when user writes to the shell (return to bottom)
         let active_pane = self.workspace.active_tab().active_pane();
         if let Some(session) = self.sessions.get_mut(&active_pane) {
+            if let Ok(mut p) = session.parser.write() {
+                if p.screen().scrollback() > 0 {
+                    p.set_scrollback(0);
+                }
+            }
             let _ = session.write(data);
         }
     }
@@ -305,8 +314,48 @@ impl App {
 
     /// Zoom the active pane (toggle)
     pub fn toggle_zoom(&mut self) {
-        let _tab = self.workspace.active_tab_mut();
-        // Toggle zoom state - we handle this in the renderer
+        let tab = self.workspace.active_tab_mut();
+        if let Some(saved) = self.zoom_root.take() {
+            tab.root = *saved;
+        } else {
+            self.zoom_root = Some(Box::new(tab.root.clone()));
+            let active = tab.active_pane();
+            tab.root = SplitNode::Leaf(active);
+        }
+        self.resize_active_panes();
+    }
+
+    /// Scroll the active pane by a delta (positive = up/backward)
+    pub fn scroll_active_pane(&mut self, delta: i32) {
+        let pane_id = self.workspace.active_tab().active_pane();
+        if let Some(session) = self.sessions.get(&pane_id) {
+            if let Ok(mut p) = session.parser.write() {
+                let (rows, _) = p.screen().size();
+                let current = p.screen().scrollback();
+                let new = (current as i32 + delta * rows as i32).max(0) as usize;
+                p.set_scrollback(new);
+            }
+        }
+    }
+
+    /// Reset scrollback to bottom (called when user types to shell)
+    pub fn scroll_reset(&mut self) {
+        let pane_id = self.workspace.active_tab().active_pane();
+        if let Some(session) = self.sessions.get(&pane_id) {
+            if let Ok(mut p) = session.parser.write() {
+                p.set_scrollback(0);
+            }
+        }
+    }
+
+    /// Close the active tab (removes tab + all its panes)
+    pub fn close_active_tab(&mut self) {
+        if !self.workspace.remove_active_tab() {
+            return; // Can't close the last tab
+        }
+        // Sessions of the removed tab are gone — let them leak or clean up
+        // Re-resize to current layout
+        self.resize_active_panes();
     }
 
     /// Begin a drag-to-resize operation on a split border
