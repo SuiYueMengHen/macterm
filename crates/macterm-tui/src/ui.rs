@@ -11,7 +11,7 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, Paragraph};
+use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Terminal;
 use tokio::sync::mpsc;
 
@@ -644,12 +644,10 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
             height: 3,
         };
 
-        frame.render_widget(Clear, palette_area);
-
         let palette_block = Block::default()
             .title(" Command Palette ")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Rgb(100, 130, 170)));
+            .border_style(Style::default().fg(Color::Rgb(120, 130, 150)));
 
         let input = if app.command_input.is_empty() {
             " Type a command... "
@@ -658,10 +656,18 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         };
 
         let palette_inner = palette_block.inner(palette_area);
-        frame.render_widget(Clear, palette_inner);
+        for y in palette_inner.y..palette_inner.bottom() {
+            for x in palette_inner.x..palette_inner.right() {
+                if let Some(cell) = frame.buffer_mut().cell_mut((x, y)) {
+                    cell.set_bg(Color::Rgb(15, 18, 28));
+                    cell.set_fg(Color::Reset);
+                    cell.set_char(' ');
+                }
+            }
+        }
         frame.render_widget(palette_block, palette_area);
         frame.render_widget(
-            Paragraph::new(input).style(Style::default().fg(Color::Rgb(180, 190, 210))),
+            Paragraph::new(input).style(Style::default().fg(Color::Rgb(200, 205, 220))),
             palette_inner,
         );
     }
@@ -674,8 +680,6 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
             width: area.width / 2,
             height: 3,
         };
-
-        frame.render_widget(Clear, search_area);
 
         let match_info = if app.search_matches.is_empty() {
             if app.search_query.is_empty() {
@@ -691,8 +695,7 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         let search_block = Block::default()
             .title(search_title.as_str())
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Rgb(70, 100, 140)))
-            .style(Style::default().bg(Color::Rgb(20, 24, 36)));
+            .border_style(Style::default().fg(Color::Rgb(120, 130, 150)));
 
         let display = if app.search_query.is_empty() {
             " Type to search... "
@@ -701,8 +704,20 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         };
 
         let inner = search_block.inner(search_area);
+        for y in inner.y..inner.bottom() {
+            for x in inner.x..inner.right() {
+                if let Some(cell) = frame.buffer_mut().cell_mut((x, y)) {
+                    cell.set_bg(Color::Rgb(15, 18, 28));
+                    cell.set_fg(Color::Reset);
+                    cell.set_char(' ');
+                }
+            }
+        }
         frame.render_widget(search_block, search_area);
-        frame.render_widget(Paragraph::new(display), inner);
+        frame.render_widget(
+            Paragraph::new(display).style(Style::default().fg(Color::Rgb(200, 205, 220))),
+            inner,
+        );
     }
 
     // Help overlay
@@ -754,13 +769,20 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
             height: help_h.min(area.height),
         };
 
-        frame.render_widget(Clear, ha);
         let block = Block::default()
             .title(" Help ")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Rgb(70, 100, 140)))
-            .style(Style::default().bg(Color::Rgb(18, 22, 33)));
+            .border_style(Style::default().fg(Color::Rgb(120, 130, 150)));
         let inner = block.inner(ha);
+        for y in ha.y..ha.bottom() {
+            for x in ha.x..ha.right() {
+                if let Some(cell) = frame.buffer_mut().cell_mut((x, y)) {
+                    cell.set_bg(Color::Rgb(15, 18, 28));
+                    cell.set_fg(Color::Reset);
+                    cell.set_char(' ');
+                }
+            }
+        }
         frame.render_widget(block, ha);
         frame.render_widget(Paragraph::new(ratatui::text::Text::from(rows)), inner);
     }
@@ -782,13 +804,20 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
             height: dlg_h.min(area.height),
         };
 
-        frame.render_widget(Clear, da);
         let block = Block::default()
             .title(title)
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Rgb(100, 120, 140)))
-            .style(Style::default().bg(Color::Rgb(22, 25, 32)));
+            .border_style(Style::default().fg(Color::Rgb(120, 130, 150)));
         let inner = block.inner(da);
+        for y in da.y..da.bottom() {
+            for x in da.x..da.right() {
+                if let Some(cell) = frame.buffer_mut().cell_mut((x, y)) {
+                    cell.set_bg(Color::Rgb(15, 18, 28));
+                    cell.set_fg(Color::Reset);
+                    cell.set_char(' ');
+                }
+            }
+        }
         frame.render_widget(block, da);
 
         let text = vec![
