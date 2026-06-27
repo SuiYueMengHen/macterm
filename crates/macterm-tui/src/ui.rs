@@ -649,8 +649,7 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         let palette_block = Block::default()
             .title(" Command Palette ")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Rgb(70, 100, 140)))
-            .style(Style::default().bg(Color::Rgb(22, 26, 38)));
+            .border_style(Style::default().fg(Color::Rgb(100, 130, 170)));
 
         let input = if app.command_input.is_empty() {
             " Type a command... "
@@ -659,8 +658,12 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         };
 
         let palette_inner = palette_block.inner(palette_area);
+        frame.render_widget(Clear, palette_inner);
         frame.render_widget(palette_block, palette_area);
-        frame.render_widget(Paragraph::new(input), palette_inner);
+        frame.render_widget(
+            Paragraph::new(input).style(Style::default().fg(Color::Rgb(180, 190, 210))),
+            palette_inner,
+        );
     }
 
     // Search overlay (E1)
