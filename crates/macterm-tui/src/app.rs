@@ -252,6 +252,10 @@ impl App {
                 }
             }
             let _ = session.write(data);
+            // Clear any stale mouse selection so selection highlighting
+            // doesn't bleed into other panes during rendering
+            self.mouse_select_start = None;
+            self.mouse_select_end = None;
         }
     }
 
