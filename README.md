@@ -73,10 +73,15 @@ Options:
 | `Ctrl+Z` | Zoom / unzoom active pane |
 | `Ctrl+↑↓←→` | Focus next/previous pane |
 | `PgUp` / `PgDn` | Scroll back / forward (1 page) |
+| `Ctrl+Space` | Quick pane jump (display numbers) |
+| `Ctrl+Tab` | Fullscreen pane cycle (next) |
+| `Ctrl+Shift+Tab` | Fullscreen pane cycle (previous) |
+| `Ctrl+G` | Toggle fullscreen pane mode |
 | **Mouse** | |
 | Click pane | Focus pane |
 | Drag border | Resize split panes |
 | Scroll wheel | Scroll back / forward |
+| Drag select | Select text (auto-copy to clipboard) |
 | **Tabs** | |
 | `Ctrl+T` | New tab |
 | `Ctrl+Shift+W` | Close active tab |
@@ -85,12 +90,16 @@ Options:
 | **Interface** | |
 | `Ctrl+P` | Command palette |
 | `Ctrl+F` | File tree (toggle) |
-| `Ctrl+S` | Search in active pane |
+| `Ctrl+S` | Search (full scrollback) |
+| `Ctrl+Shift+V` | Paste from clipboard |
 | `Ctrl+H` | Help overlay |
 | **Search** (when open) | |
-| `Enter` / `Tab` | Next match |
+| `Enter` / `Tab` | Next match (auto-scroll) |
 | `Shift+Tab` | Previous match |
 | `Esc` | Close search |
+| **Pane Jump** (when open) | |
+| `1-9` | Jump to pane N |
+| `Esc` | Cancel |
 | **Confirm Dialog** (when open) | |
 | `Enter` / `Y` | Confirm action |
 | `Esc` / `N` / `Q` | Cancel |
@@ -98,11 +107,22 @@ Options:
 | `Ctrl+letter` | Standard control codes (EOF, SIGINT, etc.) |
 | `Alt+letter` | Alt codes (ESC+letter) |
 | Arrow keys, Home, End, etc. | Passthrough to shell |
-| ← All Ctrl+letter combos pass through to the shell — no TUI conflicts | |
 
 ---
 
 ## Changelog
+
+### 0.2.5 — Copy/Paste, Fullscreen Panes, Pane Jump, Full Scrollback Search, Config
+
+- **Copy/paste**: mouse drag to select text (inverse video highlight), auto-copies to system clipboard on release. `Ctrl+Shift+V` pastes clipboard content into active pane.
+- **Fullscreen pane cycling**: `Ctrl+G` toggles fullscreen pane mode — each pane takes the full terminal area. `Ctrl+Tab` / `Ctrl+Shift+Tab` cycles through panes. Status bar shows `[FULL]` indicator.
+- **Quick pane jump**: `Ctrl+Space` overlays numbered labels on all panes, press a digit to jump directly to that pane (tmux display-panes style).
+- **Full scrollback search**: `Ctrl+S` now searches the entire scrollback buffer, not just the visible screen. Matches auto-scroll viewport to position.
+- **Config file**: `~/.config/macterm/config.toml` supports `scrollback_lines`, `default_panes`, `shell` path, and custom `keybindings`. Config-loaded settings override hardcoded defaults.
+- **CLI enhancements**: `macterm -e /bin/bash` to specify shell, `macterm -n 4` for multi-pane startup, `macterm -f` for file tree, `macterm -d ~/project` for working directory. CLI flags override config file.
+- **Configurable scrollback**: `vt100::Parser::new(rows, cols, scrollback_lines)` — buffer size configurable via config file, defaults to 10,000 rows.
+- **Status bar enhancements**: shows mode indicators (`[ZOOM]`, `[FULL]`), cleaner layout with `^Pcmd` display.
+- **Help overlay**: updated with all new keybindings (fullscreen, pane jump, paste, search).
 
 ### 0.2.4 — Scrollback, Zoom, Tab Close, Mouse Wheel
 

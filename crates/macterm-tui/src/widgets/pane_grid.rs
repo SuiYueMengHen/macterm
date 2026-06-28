@@ -28,6 +28,8 @@ pub struct PaneGrid<'a> {
     pub pane_indices: &'a HashMap<PaneId, usize>,
     /// Current frame count for animations (subtle glow pulsing)
     pub frame_count: u64,
+    /// Mouse selection region: (row_min, col_min, row_max, col_max) relative to pane content
+    pub selection: Option<(u16, u16, u16, u16)>,
 }
 
 impl Widget for PaneGrid<'_> {
@@ -232,6 +234,16 @@ impl PaneGrid<'_> {
                         }
                         if vt_cell.underline() {
                             style = style.add_modifier(Modifier::UNDERLINED);
+                        }
+                        // Selection highlight (inverse video) in absolute coords
+                        if let Some((sx, sy, ex, ey)) = self.selection {
+                            let x0 = sx.min(ex);
+                            let x1 = sx.max(ex);
+                            let y0 = sy.min(ey);
+                            let y1 = sy.max(ey);
+                            if buf_x >= x0 && buf_x <= x1 && buf_y >= y0 && buf_y <= y1 {
+                                style = Style::default().fg(bg).bg(fg);
+                            }
                         }
                         cell.set_style(style);
                         let ch = vt_cell.contents().chars().next().unwrap_or(' ');

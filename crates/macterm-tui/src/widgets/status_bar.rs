@@ -12,6 +12,8 @@ pub struct StatusBar<'a> {
     pub message_color: Color,
     pub show_file_tree: bool,
     pub version: &'a str,
+    pub fullscreen_pane_mode: bool,
+    pub zoom_mode: bool,
 }
 
 impl Widget for StatusBar<'_> {
@@ -20,10 +22,19 @@ impl Widget for StatusBar<'_> {
             return;
         }
 
+        let mode_indicator = if self.zoom_mode {
+            " [ZOOM] "
+        } else if self.fullscreen_pane_mode {
+            " [FULL] "
+        } else {
+            ""
+        };
+
         let left_text = format!(
-            " Tab {} | {} panes ",
+            " Tab {} | {} panes{} ",
             self.active_tab + 1,
-            self.pane_count
+            self.pane_count,
+            mode_indicator,
         );
         let left_span = Span::raw(left_text.clone());
         let left_area = Rect::new(area.x, area.y, left_text.len() as u16, area.height);
@@ -44,7 +55,7 @@ impl Widget for StatusBar<'_> {
             Span::raw(" ^D↓ "),
             Span::raw(" ^E→ "),
             Span::raw(" ^Ttab "),
-            Span::raw(" Alt1-9 "),
+            Span::raw(" ^Pcmd "),
             Span::raw(" ^Qquit "),
         ];
 

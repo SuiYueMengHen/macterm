@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::config::Config;
 use crate::pty::{PtyEvent, PtySession};
 use macterm_core::*;
 use ratatui::layout::Rect;
@@ -68,6 +69,8 @@ pub struct App {
     pub confirm_action: ConfirmAction,
     /// Saved split tree when zoomed; None = normal view
     pub zoom_root: Option<Box<SplitNode>>,
+    /// Application configuration
+    pub config: Config,
     /// Scroll offset for the tab bar (A4: tab scrolling)
     pub tab_scroll_offset: usize,
     /// Cached file tree entries (D1): (filename, is_directory)
@@ -84,10 +87,22 @@ pub struct App {
     pub search_match_index: usize,
     /// Set true when PTY output, user input, or resize occurs; cleared after render.
     pub dirty: bool,
+    /// System clipboard access
+    pub clipboard: Option<arboard::Clipboard>,
+    /// Mouse selection start position (row, col) — None = not selecting
+    pub mouse_select_start: Option<(u16, u16)>,
+    /// Mouse selection end position (row, col)
+    pub mouse_select_end: Option<(u16, u16)>,
+    /// Fullscreen pane cycling mode: each pane takes full content area
+    pub fullscreen_pane_mode: bool,
+    /// Index into pane_ids for fullscreen cycling
+    pub fullscreen_pane_index: usize,
+    /// Quick pane jump overlay (display-panes style)
+    pub show_pane_jump: bool,
 }
 
 impl App {
-    pub fn new() -> (Self, mpsc::UnboundedSender<PtyEvent>) {
+    pub fn new(config: Config) -> (Self, mpsc::UnboundedSender<PtyEvent>) {
         let (pty_tx, pty_rx) = mpsc::unbounded_channel();
 
         let workspace = Workspace::new("default");
@@ -96,7 +111,11 @@ impl App {
 
         // Spawn initial terminal pane
         let first_pane_id = workspace.active_tab().active_pane();
-        match PtySession::spawn(first_pane_id, 80, 24, pty_tx.clone()) {
+        match PtySession::spawn(
+            first_pane_id, 80, 24,
+            config.scrollback_lines, config.shell.as_deref(),
+            pty_tx.clone(),
+        ) {
             Ok(session) => {
                 sessions.insert(first_pane_id, session);
             }
@@ -110,6 +129,7 @@ impl App {
                 workspace,
                 sessions,
                 pty_rx,
+                config,
                 running: true,
                 area: Rect::default(),
                 show_file_tree: false,
@@ -132,6 +152,12 @@ impl App {
                 search_matches: Vec::new(),
                 search_match_index: 0,
                 dirty: true,
+                clipboard: arboard::Clipboard::new().ok(),
+                mouse_select_start: None,
+                mouse_select_end: None,
+                fullscreen_pane_mode: false,
+                fullscreen_pane_index: 0,
+                show_pane_jump: false,
             },
             pty_tx,
         )
@@ -249,7 +275,11 @@ impl App {
 
         // Spawn PTY for the new pane (will be resized to actual dimensions below)
         let (tx, _rx) = mpsc::unbounded_channel();
-        match PtySession::spawn(new_pane_id, 80, 24, tx) {
+        match PtySession::spawn(
+            new_pane_id, 80, 24,
+            self.config.scrollback_lines, self.config.shell.as_deref(),
+            tx,
+        ) {
             Ok(session) => {
                 self.sessions.insert(new_pane_id, session);
             }
@@ -348,14 +378,104 @@ impl App {
         }
     }
 
-    /// Close the active tab (removes tab + all its panes)
     pub fn close_active_tab(&mut self) {
         if !self.workspace.remove_active_tab() {
-            return; // Can't close the last tab
+            return;
         }
-        // Sessions of the removed tab are gone — let them leak or clean up
-        // Re-resize to current layout
         self.resize_active_panes();
+    }
+
+    /// Copy selected text to clipboard. Returns true if copied.
+    pub fn copy_selection(&mut self) -> bool {
+        let (start, end) = match (self.mouse_select_start, self.mouse_select_end) {
+            (Some(s), Some(e)) => (s, e),
+            _ => return false,
+        };
+        let row_min = start.0.min(end.0);
+        let row_max = start.0.max(end.0);
+        let col_min = if start.0 < end.0 || (start.0 == end.0 && start.1 < end.1) {
+            start.1
+        } else {
+            end.1
+        };
+        let col_max = if start.0 > end.0 || (start.0 == end.0 && start.1 > end.1) {
+            start.1
+        } else {
+            end.1
+        };
+
+        let pane_id = self.workspace.active_tab().active_pane();
+        let text = self.sessions.get(&pane_id).and_then(|session| {
+            session.parser.try_read().ok().map(|guard| {
+                guard.screen().contents_between(row_min, col_min, row_max, col_max)
+            })
+        });
+        if let Some(text) = text {
+            if let Some(ref mut cb) = self.clipboard {
+                if cb.set_text(text).is_ok() {
+                    self.set_status_message("Copied".to_string());
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Paste text from clipboard into active pane
+    pub fn paste_clipboard(&mut self) {
+        if let Some(ref mut cb) = self.clipboard {
+            if let Ok(text) = cb.get_text() {
+                self.write_to_active_pane(text.as_bytes());
+            }
+        }
+    }
+
+    /// Toggle fullscreen pane cycling mode
+    pub fn toggle_fullscreen_mode(&mut self) {
+        self.fullscreen_pane_mode = !self.fullscreen_pane_mode;
+        if self.fullscreen_pane_mode {
+            self.fullscreen_pane_index = 0;
+            self.set_status_message("Fullscreen pane mode".to_string());
+        } else {
+            self.set_status_message("Split pane mode".to_string());
+        }
+    }
+
+    /// Cycle to next/prev pane in fullscreen mode
+    pub fn cycle_fullscreen_pane(&mut self, next: bool) {
+        let ids = self.workspace.active_tab().pane_ids();
+        if ids.is_empty() {
+            return;
+        }
+        if next {
+            self.fullscreen_pane_index = (self.fullscreen_pane_index + 1) % ids.len();
+        } else {
+            self.fullscreen_pane_index = if self.fullscreen_pane_index == 0 {
+                ids.len() - 1
+            } else {
+                self.fullscreen_pane_index - 1
+            };
+        }
+        self.workspace.active_tab_mut().active_pane = ids[self.fullscreen_pane_index];
+    }
+
+    /// Start quick pane jump overlay
+    pub fn start_pane_jump(&mut self) {
+        self.show_pane_jump = true;
+    }
+
+    /// Handle a numeric key press during pane jump. Returns true if handled.
+    pub fn handle_pane_jump_key(&mut self, digit: u32) -> bool {
+        let ids = self.workspace.active_tab().pane_ids();
+        if digit > 0 && digit as usize <= ids.len() {
+            let idx = digit as usize - 1;
+            self.workspace.active_tab_mut().active_pane = ids[idx];
+            self.show_pane_jump = false;
+            self.set_status_message(format!("Pane {}", digit));
+            true
+        } else {
+            false
+        }
     }
 
     /// Begin a drag-to-resize operation on a split border
@@ -486,27 +606,68 @@ impl App {
         if query.is_empty() {
             return;
         }
+
         let active_pane = self.workspace.active_tab().active_pane();
         if let Some(session) = self.sessions.get(&active_pane) {
-            if let Ok(parser) = session.parser.try_read() {
-                let screen = parser.screen();
-                let (rows, cols) = screen.size();
+            if let Ok(mut parser) = session.parser.write() {
+                let (rows, cols) = parser.screen().size();
                 let query_lower = query.to_lowercase();
-                for row in 0..rows {
+                let saved_offset = parser.screen().scrollback();
+
+                parser.set_scrollback(usize::MAX);
+                let top_offset = parser.screen().scrollback();
+                let mut offset = top_offset;
+
+                // Stores (absolute_row, col_start, col_end)
+                let mut all_matches: Vec<(u16, u16, u16)> = Vec::new();
+
+                loop {
+                    parser.set_scrollback(offset);
+                    let screen = parser.screen();
+                    for rel_row in 0..rows {
+                        let abs_row = (offset + rel_row as usize) as u16;
+                        let mut col = 0u16;
+                        while col < cols {
+                            if let Some(cell) = screen.cell(rel_row, col) {
+                                let contents = cell.contents();
+                                if contents.to_lowercase().contains(&query_lower) {
+                                    let start = col;
+                                    let end = col + contents.len() as u16;
+                                    all_matches.push((abs_row, start, end));
+                                }
+                            }
+                            col += 1;
+                        }
+                    }
+                    if offset < rows as usize {
+                        break;
+                    }
+                    offset = offset.saturating_sub(rows as usize);
+                }
+
+                parser.set_scrollback(0);
+                let screen = parser.screen();
+                for rel_row in 0..rows {
+                    let abs_row = rel_row as u16;
                     let mut col = 0u16;
                     while col < cols {
-                        if let Some(cell) = screen.cell(row, col) {
+                        if let Some(cell) = screen.cell(rel_row, col) {
                             let contents = cell.contents();
-                            // Simple substring search
                             if contents.to_lowercase().contains(&query_lower) {
                                 let start = col;
                                 let end = col + contents.len() as u16;
-                                self.search_matches.push((row, start, end));
+                                all_matches.push((abs_row, start, end));
                             }
                         }
                         col += 1;
                     }
                 }
+
+                all_matches.sort_by_key(|m| m.0);
+                self.search_matches = all_matches;
+
+                // Restore original scrollback position
+                parser.set_scrollback(saved_offset);
             }
         }
     }
@@ -517,6 +678,7 @@ impl App {
             return;
         }
         self.search_match_index = (self.search_match_index + 1) % self.search_matches.len();
+        self.goto_match();
     }
 
     /// Move to the previous search match
@@ -529,6 +691,23 @@ impl App {
         } else {
             self.search_match_index - 1
         };
+        self.goto_match();
+    }
+
+    /// Scroll the viewport to show the current search match
+    pub fn goto_match(&mut self) {
+        if self.search_matches.is_empty() {
+            return;
+        }
+        let (row, _col, _end) = self.search_matches[self.search_match_index];
+        let pane_id = self.workspace.active_tab().active_pane();
+        if let Some(session) = self.sessions.get(&pane_id) {
+            if let Ok(mut p) = session.parser.write() {
+                let (vis_rows, _) = p.screen().size();
+                let scroll_pos = (row as usize).saturating_sub(vis_rows as usize / 3);
+                p.set_scrollback(scroll_pos);
+            }
+        }
     }
 
     /// Input a character into the search query

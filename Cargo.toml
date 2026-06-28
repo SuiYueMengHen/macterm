@@ -7,7 +7,7 @@ resolver = "2"
 
 [package]
 name = "macterm"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2021"
 description = "A modern multi-terminal TUI multiplexer for macOS"
 

@@ -32,6 +32,8 @@ impl PtySession {
         pane_id: PaneId,
         cols: u16,
         rows: u16,
+        scrollback_lines: usize,
+        shell_path: Option<&str>,
         #[allow(dead_code)]
         parser_tx: mpsc::UnboundedSender<PtyEvent>,
     ) -> Result<Self> {
@@ -47,7 +49,10 @@ impl PtySession {
             .context("Failed to open PTY")?;
         let (master, slave) = (pair.master, pair.slave);
 
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+        let shell = shell_path
+            .map(|s| s.to_string())
+            .or_else(|| std::env::var("SHELL").ok())
+            .unwrap_or_else(|| "/bin/zsh".to_string());
         let mut cmd = CommandBuilder::new(shell);
         cmd.env("TERM", "xterm-256color");
         let mut child = slave
@@ -58,7 +63,7 @@ impl PtySession {
         let writer = master.take_writer()?;
         let reader = master.try_clone_reader()?;
 
-        let parser = Arc::new(RwLock::new(vt100::Parser::new(rows, cols, 10000)));
+        let parser = Arc::new(RwLock::new(vt100::Parser::new(rows, cols, scrollback_lines)));
 
         // Apply Tokyo Night color scheme (F2) — feed OSC sequences to the parser
         // Sets default fg/bg and ANSI color palette 0-15 for a cohesive theme.

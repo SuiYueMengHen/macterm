@@ -19,6 +19,7 @@ use crate::app::{App, ConfirmAction, ResizeState};
 use crate::widgets::header::{header_area, HeaderBar};
 use crate::widgets::pane_grid::PaneGrid;
 use crate::widgets::status_bar::{status_bar_area, StatusBar};
+use macterm_core::SplitNode;
 
 /// Run the main TUI event loop
 pub async fn run(mut app: App) -> Result<()> {
@@ -199,6 +200,20 @@ fn handle_event(app: &mut App, event: &Event) -> Result<()> {
                 return Ok(());
             }
 
+            // Handle pane jump overlay
+            if app.show_pane_jump {
+                match key.code {
+                    KeyCode::Esc => {
+                        app.show_pane_jump = false;
+                    }
+                    KeyCode::Char(c) if c.is_ascii_digit() => {
+                        app.handle_pane_jump_key(c.to_digit(10).unwrap_or(0));
+                    }
+                    _ => {}
+                }
+                return Ok(());
+            }
+
             match key.code {
                 // Search (find)
                 KeyCode::Char('s')
@@ -263,7 +278,11 @@ fn handle_event(app: &mut App, event: &Event) -> Result<()> {
                     // Spawn PTY for the new tab's first pane
                     let pane_id = app.workspace.active_tab().active_pane();
                     let (tx, _rx) = mpsc::unbounded_channel();
-                    match crate::pty::PtySession::spawn(pane_id, 80, 24, tx) {
+                    match crate::pty::PtySession::spawn(
+                        pane_id, 80, 24,
+                        app.config.scrollback_lines, app.config.shell.as_deref(),
+                        tx,
+                    ) {
                         Ok(session) => {
                             app.sessions.insert(pane_id, session);
                         }
@@ -329,6 +348,29 @@ fn handle_event(app: &mut App, event: &Event) -> Result<()> {
                 // Help overlay
                 KeyCode::Char('h') if key.modifiers == KeyModifiers::CONTROL => {
                     app.show_help = !app.show_help;
+                }
+
+                // Paste from clipboard
+                KeyCode::Char('V') if key.modifiers == KeyModifiers::CONTROL => {
+                    app.paste_clipboard();
+                }
+
+                // Quick pane jump (display-panes)
+                KeyCode::Char(' ') if key.modifiers == KeyModifiers::CONTROL => {
+                    app.start_pane_jump();
+                }
+
+                // Toggle fullscreen pane cycling mode
+                KeyCode::Char('g') if key.modifiers == KeyModifiers::CONTROL => {
+                    app.toggle_fullscreen_mode();
+                }
+
+                // Fullscreen pane cycling (only when fullscreen mode is active)
+                KeyCode::Tab if key.modifiers == KeyModifiers::CONTROL && app.fullscreen_pane_mode => {
+                    app.cycle_fullscreen_pane(true);
+                }
+                KeyCode::BackTab if key.modifiers == KeyModifiers::CONTROL && app.fullscreen_pane_mode => {
+                    app.cycle_fullscreen_pane(false);
                 }
 
                 // Pass through to active pane — handle Ctrl/Alt modifiers correctly
@@ -406,7 +448,6 @@ fn handle_event(app: &mut App, event: &Event) -> Result<()> {
 
             match mouse.kind {
                 MouseEventKind::Down(btn) if btn == crossterm::event::MouseButton::Left => {
-                    // First check for border click → start resize
                     let (border_hit, focus_hit) = {
                         let tab = app.workspace.active_tab();
                         let border = find_border_at_position(
@@ -436,16 +477,32 @@ fn handle_event(app: &mut App, event: &Event) -> Result<()> {
                             macterm_core::SplitDirection::Vertical => click_y,
                         };
                         app.start_resize_drag(pane_id, dir, split_area, ratio, start_pos);
+                        app.mouse_select_start = None;
+                        app.mouse_select_end = None;
                     } else if let Some(pane_id) = focus_hit {
                         let tab = app.workspace.active_tab_mut();
                         tab.set_active_pane(pane_id);
+                        app.mouse_select_start = Some((click_x, click_y));
+                        app.mouse_select_end = Some((click_x, click_y));
                     }
                 }
                 MouseEventKind::Drag(btn) if btn == crossterm::event::MouseButton::Left => {
-                    app.update_resize_drag(click_x, click_y);
+                    if matches!(app.resize_state, ResizeState::Dragging { .. }) {
+                        app.update_resize_drag(click_x, click_y);
+                    } else if app.mouse_select_start.is_some() {
+                        app.mouse_select_end = Some((click_x, click_y));
+                    }
                 }
                 MouseEventKind::Up(btn) if btn == crossterm::event::MouseButton::Left => {
-                    app.end_resize_drag();
+                    if matches!(app.resize_state, ResizeState::Dragging { .. }) {
+                        app.end_resize_drag();
+                    } else if let (Some(start), Some(end)) = (app.mouse_select_start, app.mouse_select_end) {
+                        if start != end {
+                            app.copy_selection();
+                        }
+                        app.mouse_select_start = None;
+                        app.mouse_select_end = None;
+                    }
                 }
                 MouseEventKind::ScrollUp => {
                     app.scroll_active_pane(1);
@@ -604,17 +661,33 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         .map(|(i, id)| (*id, i + 1))
         .collect();
 
+    let selection = match (app.mouse_select_start, app.mouse_select_end) {
+        (Some(s), Some(e)) => Some((s.0, s.1, e.0, e.1)),
+        _ => None,
+    };
+
+    // In fullscreen pane mode, render only the active pane at full content area
+    let fullscreen_root: SplitNode;
+    let (pane_root, pane_area) = if app.fullscreen_pane_mode {
+        let active_id = tab.active_pane();
+        fullscreen_root = SplitNode::Leaf(active_id);
+        (&fullscreen_root, content_area)
+    } else {
+        (&tab.root, content_area)
+    };
+
     let pane_grid = PaneGrid {
-        root: &tab.root,
+        root: pane_root,
         active_pane: tab.active_pane(),
         parsers: &parsers,
-        area: content_area,
+        area: pane_area,
 
         resize_pane,
         pane_indices: &pane_indices,
         frame_count: app.frame_count,
+        selection,
     };
-    frame.render_widget(pane_grid, content_area);
+    frame.render_widget(pane_grid, pane_area);
 
     // Render cursor in the active pane
     {
@@ -635,6 +708,23 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         }
     }
 
+    // Pane jump overlay: show numbered labels on each pane
+    if app.show_pane_jump {
+        let pane_rects = pane_rects_from_tree(&tab.root, content_area);
+        for (i, (_, rect)) in pane_rects.iter().enumerate() {
+            let label = format!(" {} ", i + 1);
+            let label_x = rect.x + rect.width.saturating_sub(label.len() as u16 + 2);
+            let label_y = rect.y + 1;
+            for (ci, ch) in label.chars().enumerate() {
+                let lx = label_x + ci as u16;
+                if let Some(cell) = frame.buffer_mut().cell_mut((lx, label_y)) {
+                    cell.set_char(ch);
+                    cell.set_style(Style::default().fg(Color::Reset));
+                }
+            }
+        }
+    }
+
     // Status bar at bottom
     if app.show_status_bar {
         let status_area = status_bar_area(area);
@@ -649,6 +739,8 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
                 message_color: app.status_message_color,
                 show_file_tree: app.show_file_tree,
                 version: env!("CARGO_PKG_VERSION"),
+                fullscreen_pane_mode: app.fullscreen_pane_mode,
+                zoom_mode: app.zoom_root.is_some(),
             },
             status_area,
         );
@@ -746,6 +838,11 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         row!(" Ctrl+↑↓←→  ", "Focus pane    ", "next/prev");
         row!(" PgUp/PgDn   ", "Scroll back   ", "1 page");
         row!(" Mouse wheel  ", "Scroll back   ", "up/down");
+        row!(" Ctrl+Tab    ", "Fullscreen    ", "cycle panes");
+        row!(" Ctrl+g      ", "Fullscreen    ", "toggle mode");
+        row!(" Ctrl+Space  ", "Quick jump    ", "pane numbers");
+        row!(" Drag+L      ", "Select text   ", "auto-copy");
+        row!(" Ctrl+Shift+V", "Paste         ", "from clipboard");
         rows.push(Line::from(""));
         sec!(" Tabs ");
         row!(" Ctrl+T      ", "New tab       ", "");
@@ -756,7 +853,7 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         sec!(" Interface ");
         row!(" Ctrl+P      ", "Command palette", "");
         row!(" Ctrl+F      ", "File tree     ", "toggle");
-        row!(" Ctrl+S      ", "Search        ", "find in pane");
+        row!(" Ctrl+S      ", "Search        ", "find+scroll");
         row!(" Ctrl+H      ", "Help          ", "this screen");
         row!(" Ctrl+Q      ", "Quit          ", "");
         rows.push(Line::from(""));
@@ -767,7 +864,7 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         row!(" Alt+letter  ", "Alt codes     ", "ESC+letter");
 
         let help_h = rows.len() as u16 + 2;
-        let help_w = 44u16;
+        let help_w = 52u16;
         let ha = Rect {
             x: (area.width.saturating_sub(help_w)) / 2,
             y: (area.height.saturating_sub(help_h)) / 2,
