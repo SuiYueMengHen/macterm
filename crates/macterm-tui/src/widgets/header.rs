@@ -5,6 +5,8 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Widget;
 
+use crate::app::SysStats;
+
 const BRAND: &str = " MACTERMINAL ";
 
 pub struct HeaderBar<'a> {
@@ -12,6 +14,7 @@ pub struct HeaderBar<'a> {
     pub version: &'a str,
     pub frame_count: u64,
     pub tab_scroll_offset: usize,
+    pub stats: &'a SysStats,
 }
 
 impl HeaderBar<'_> {
@@ -20,8 +23,9 @@ impl HeaderBar<'_> {
         version: &'a str,
         frame_count: u64,
         tab_scroll_offset: usize,
+        stats: &'a SysStats,
     ) -> HeaderBar<'a> {
-        HeaderBar { workspace, version, frame_count, tab_scroll_offset }
+        HeaderBar { workspace, version, frame_count, tab_scroll_offset, stats }
     }
 }
 
@@ -41,7 +45,21 @@ impl Widget for HeaderBar<'_> {
             ]);
         brand_line.render(Rect::new(area.x, area.y, area.width, 1), buf);
 
-        render_tabs(self.workspace, area.y + 1, area, buf, self.tab_scroll_offset);
+        // Stats line
+        let s = &self.stats;
+        let mem_str = format!("{:.1}/{:.0}G", s.mem_used_gb, s.mem_total_gb);
+        let stats_text = format!(
+            " CPU {}%  MEM {}  {} ",
+            s.cpu_pct as u8, mem_str, s.cpu_brand,
+        );
+        let stats_filler = area.width.saturating_sub(stats_text.len() as u16);
+        let stats_line = Line::default().spans(vec![
+            Span::styled(format!(" {} ", stats_text.trim()), Style::default()),
+            Span::styled(" ".repeat(stats_filler as usize), Style::default()),
+        ]);
+        stats_line.render(Rect::new(area.x, area.y + 1, area.width, 1), buf);
+
+        render_tabs(self.workspace, area.y + 2, area, buf, self.tab_scroll_offset);
     }
 }
 
@@ -115,5 +133,5 @@ fn render_tabs(workspace: &Workspace, y: u16, area: Rect, buf: &mut Buffer, scro
 }
 
 pub fn header_area(area: Rect) -> Rect {
-    Rect { x: area.x, y: area.y, width: area.width, height: 2 }
+    Rect { x: area.x, y: area.y, width: area.width, height: 3 }
 }

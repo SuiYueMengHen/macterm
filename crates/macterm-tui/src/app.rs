@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::time::Duration;
 
 use crate::config::Config;
 use crate::pty::{PtyEvent, PtySession};
@@ -6,6 +7,15 @@ use macterm_core::*;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
 use tokio::sync::mpsc;
+
+/// Cached system statistics for the header bar
+#[derive(Debug, Clone)]
+pub struct SysStats {
+    pub cpu_pct: f32,
+    pub mem_used_gb: f32,
+    pub mem_total_gb: f32,
+    pub cpu_brand: String,
+}
 
 /// Pending confirmation action (for close pane / quit confirmation dialogs)
 #[derive(Debug, Clone, PartialEq)]
@@ -99,6 +109,12 @@ pub struct App {
     pub fullscreen_pane_index: usize,
     /// Quick pane jump overlay (display-panes style)
     pub show_pane_jump: bool,
+    /// System monitor for CPU/memory stats collection
+    sysmon: sysinfo::System,
+    /// Cached system stats (refreshed periodically)
+    pub stats: SysStats,
+    /// Tick counter for stats refresh (~every 120 frames)
+    stats_tick: u64,
 }
 
 impl App {
@@ -123,6 +139,21 @@ impl App {
                 log::error!("Failed to spawn initial PTY: {}", e);
             }
         }
+
+        // Initialize system monitor for stats
+        let mut sysmon = sysinfo::System::new_all();
+        std::thread::sleep(Duration::from_millis(200));
+        sysmon.refresh_cpu_usage();
+        sysmon.refresh_memory();
+        let cpu_brand = sysmon.cpus().first()
+            .map(|c| c.brand().to_string())
+            .unwrap_or_default();
+        let stats = SysStats {
+            cpu_pct: sysmon.global_cpu_usage(),
+            mem_used_gb: sysmon.used_memory() as f32 / 1073741824.0,
+            mem_total_gb: sysmon.total_memory() as f32 / 1073741824.0,
+            cpu_brand,
+        };
 
         (
             Self {
@@ -158,6 +189,9 @@ impl App {
                 fullscreen_pane_mode: false,
                 fullscreen_pane_index: 0,
                 show_pane_jump: false,
+                sysmon,
+                stats,
+                stats_tick: 0,
             },
             pty_tx,
         )
@@ -172,6 +206,21 @@ impl App {
         {
             self.status_message = None;
         }
+        // Refresh system stats every ~120 frames (~2s at 60fps)
+        self.stats_tick += 1;
+        if self.stats_tick >= 120 {
+            self.stats_tick = 0;
+            self.refresh_stats();
+        }
+    }
+
+    /// Refresh CPU/memory stats via sysinfo
+    fn refresh_stats(&mut self) {
+        self.sysmon.refresh_cpu_usage();
+        self.sysmon.refresh_memory();
+        self.stats.cpu_pct = self.sysmon.global_cpu_usage();
+        self.stats.mem_used_gb = self.sysmon.used_memory() as f32 / 1073741824.0;
+        self.stats.mem_total_gb = self.sysmon.total_memory() as f32 / 1073741824.0;
     }
 
     /// Set a status message with auto-fade timing (default amber color)
@@ -214,7 +263,7 @@ impl App {
     /// Must match the content area calculation in `render()` (accounting for file tree sidebar).
     pub fn resize_active_panes(&mut self) {
         let status_h = if self.show_status_bar { 1 } else { 0 };
-        let head_h: u16 = 2;
+        let head_h: u16 = 3;
         let file_tree_w: u16 = if self.show_file_tree { 20 } else { 0 };
         let content_area = Rect {
             x: file_tree_w,

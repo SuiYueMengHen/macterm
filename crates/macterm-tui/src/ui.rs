@@ -438,11 +438,12 @@ fn handle_event(app: &mut App, event: &Event) -> Result<()> {
             // Compute the content area (below header, above status bar) — must match render()
             let content_area = {
                 let status_h = if app.show_status_bar { 1 } else { 0 };
+                let head_bottom = header_area(app.area).bottom();
                 Rect {
                     x: if app.show_file_tree { 20 } else { 0 },
-                    y: header_area(app.area).bottom(),
+                    y: head_bottom,
                     width: app.area.width - if app.show_file_tree { 20 } else { 0 },
-                    height: app.area.height.saturating_sub(2 + status_h),
+                    height: app.area.height.saturating_sub(head_bottom + status_h),
                 }
             };
 
@@ -583,14 +584,14 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
     // Header bar at top (brand + tabs)
     let head_area = header_area(area);
     frame.render_widget(
-        HeaderBar::new(&app.workspace, env!("CARGO_PKG_VERSION"), app.frame_count, app.tab_scroll_offset),
+        HeaderBar::new(&app.workspace, env!("CARGO_PKG_VERSION"), app.frame_count, app.tab_scroll_offset, &app.stats),
         head_area,
     );
 
     // Main content area
     let content_y = head_area.bottom();
     let status_h = if app.show_status_bar { 1 } else { 0 };
-    let content_height = area.height.saturating_sub(2 + status_h);
+    let content_height = area.height.saturating_sub(content_y + status_h);
 
     let content_area = Rect {
         x: if app.show_file_tree { 20 } else { 0 },
