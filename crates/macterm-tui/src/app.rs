@@ -223,7 +223,13 @@ impl App {
             height: self.area.height.saturating_sub(head_h + status_h),
         };
         let tab = self.workspace.active_tab();
-        let pane_rects = crate::ui::pane_rects_from_tree(&tab.root, content_area);
+        // In fullscreen mode, give the active pane the full content area
+        let root = if self.fullscreen_pane_mode {
+            SplitNode::Leaf(tab.active_pane())
+        } else {
+            tab.root.clone()
+        };
+        let pane_rects = crate::ui::pane_rects_from_tree(&root, content_area);
         for (pane_id, pane_rect) in &pane_rects {
             if let Some(session) = self.sessions.get_mut(pane_id) {
                 // Each pane renders with a border (1 cell on each side) and a 1-row title bar.
@@ -237,10 +243,10 @@ impl App {
 
     /// Write input to the active pane
     pub fn write_to_active_pane(&mut self, data: &[u8]) {
-        // Reset scrollback when user writes to the shell (return to bottom)
         let active_pane = self.workspace.active_tab().active_pane();
         if let Some(session) = self.sessions.get_mut(&active_pane) {
-            if let Ok(mut p) = session.parser.write() {
+            // Non-blocking scrollback reset — skip if parser is locked
+            if let Ok(mut p) = session.parser.try_write() {
                 if p.screen().scrollback() > 0 {
                     p.set_scrollback(0);
                 }
@@ -359,7 +365,7 @@ impl App {
     pub fn scroll_active_pane(&mut self, delta: i32) {
         let pane_id = self.workspace.active_tab().active_pane();
         if let Some(session) = self.sessions.get(&pane_id) {
-            if let Ok(mut p) = session.parser.write() {
+            if let Ok(mut p) = session.parser.try_write() {
                 let (rows, _) = p.screen().size();
                 let current = p.screen().scrollback();
                 let new = (current as i32 + delta * rows as i32).max(0) as usize;
@@ -609,7 +615,7 @@ impl App {
 
         let active_pane = self.workspace.active_tab().active_pane();
         if let Some(session) = self.sessions.get(&active_pane) {
-            if let Ok(mut parser) = session.parser.write() {
+            if let Ok(mut parser) = session.parser.try_write() {
                 let (rows, cols) = parser.screen().size();
                 let query_lower = query.to_lowercase();
                 let saved_offset = parser.screen().scrollback();

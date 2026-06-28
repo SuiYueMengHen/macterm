@@ -695,7 +695,7 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         if let Some(parser) = app.sessions.get(&active_pane_id).map(|s| s.parser.clone()) {
             if let Ok(guard) = parser.try_read() {
                 let (cursor_row, cursor_col) = guard.screen().cursor_position();
-                let pane_rects = pane_rects_from_tree(&tab.root, content_area);
+                let pane_rects = pane_rects_from_tree(pane_root, pane_area);
                 if let Some(pane_area) = pane_rects.get(&active_pane_id) {
                     // render_pane: area → border(+1) → title_bar(+1) → content
                     let inner_x = pane_area.x.saturating_add(1);      // border left
