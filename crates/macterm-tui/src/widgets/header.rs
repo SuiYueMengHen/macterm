@@ -5,7 +5,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Widget;
 
-use crate::app::SysStats;
+use crate::stats::SysStats;
 
 const BRAND: &str = " MACTERMINAL ";
 
@@ -48,9 +48,13 @@ impl Widget for HeaderBar<'_> {
         // Stats line
         let s = &self.stats;
         let mem_str = format!("{:.1}/{:.0}G", s.mem_used_gb, s.mem_total_gb);
+        let temp_str = match s.temp_c {
+            Some(t) if t.is_finite() => format!(" {} {:.0}°C", s.temp_label, t),
+            _ => String::new(),
+        };
         let stats_text = format!(
-            " CPU {}%  MEM {}  {} ",
-            s.cpu_pct as u8, mem_str, s.cpu_brand,
+            " CPU {}%  MEM {} {} {}",
+            s.cpu_pct as u8, mem_str, s.cpu_brand, temp_str,
         );
         let stats_filler = area.width.saturating_sub(stats_text.len() as u16);
         let stats_line = Line::default().spans(vec![
@@ -68,7 +72,7 @@ fn render_tabs(workspace: &Workspace, y: u16, area: Rect, buf: &mut Buffer, scro
     let active_idx = workspace.active_tab;
     let tab_count = tabs.len().max(1);
 
-    let tab_width = (area.width as usize / tab_count).max(14).min(32);
+    let tab_width = (area.width as usize / tab_count).clamp(14, 32);
     let start_x = area.x as usize;
 
     let max_visible = (area.width as usize) / tab_width;
@@ -88,7 +92,7 @@ fn render_tabs(workspace: &Workspace, y: u16, area: Rect, buf: &mut Buffer, scro
         let is_active = i == active_idx;
 
         let raw_title = &tab.title;
-        let max_title_len = tab_width.saturating_sub(3) as usize;
+        let max_title_len = tab_width.saturating_sub(3);
         let short_title = if raw_title.len() > max_title_len {
             format!("{}…", &raw_title[..max_title_len.saturating_sub(1)])
         } else {
