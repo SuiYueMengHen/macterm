@@ -133,6 +133,22 @@ Options:
 
 ## 📋 Changelog
 
+### 0.2.6 — Safety, Performance, Temperature Fix
+
+- **Cache init fix**: `cached_parsers`/`pane_indices` now populated at startup — fixes blank panes on first render. Also refreshed after tab switch for correct pane numbering.
+- **Temperature fix**: correctly selects CPU die sensors (`PMU tdie*`) on Apple Silicon instead of thermal calibration (`PMU tcal`). Displays "Tdie 43°C" with proper sensor prioritization.
+- **Dead code removal**: deleted `tab_bar.rs` (114 LOC), `animations.rs`; removed `tachyonfx`, `tokio-stream`, `color-eyre`, and optional `serde` dependencies.
+- **Dependency trimming**: tokio narrowed from `"full"` to minimal feature set; ratatui narrowed from `"all-widgets"` to defaults.
+- **Safety fix**: 4× unsafe `unwrap()` replaced with safe fallback pattern.
+- **Thread safety**: `PtySession` `Drop` impl aborts background reader thread on pane close.
+- **Memory caching**: parsers and pane-indices HashMaps now cached and rebuilt only on session/tab changes instead of every frame.
+- **Search highlight**: matches rendered as bright yellow-on-dark-gray in pane content.
+- **Scroll counter**: pane title shows `↑ N` scroll lines instead of bare arrow.
+- **Split area unification**: 4 copies of split computation consolidated into `compute_split_areas()` — fixes truncation-vs-rounding inconsistency across render/click/resize.
+- **Module extraction**: `SysStats` → `stats.rs`, `ConfirmAction` → `confirmation.rs` (reduces `app.rs` by ~80 LOC).
+- **Semantic status colors**: `set_status_success()` (green), `set_status_error()` (red).
+- **Clippy cleanup**: 13 warnings fixed (`collapsible_if`, `redundant_closure`, `manual_clamp`, `unnecessary_cast`, etc.).
+
 ### 0.2.5 — Copy/Paste, Fullscreen Panes, Pane Jump, Full Scrollback Search, Config
 
 - **Copy/paste**: mouse drag to select text (inverse video highlight), auto-copies to system clipboard on release. `Ctrl+Shift+V` pastes clipboard content into active pane.

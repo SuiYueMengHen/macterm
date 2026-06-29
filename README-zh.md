@@ -114,6 +114,22 @@ cargo build --release
 
 ## 更新日志
 
+### 0.2.6 — 安全增强、性能优化、温度修复
+
+- **缓存初始化修复**：`cached_parsers`/`pane_indices` 在启动时即填充——修复首次渲染面板为空的问题。切换标签页后也刷新缓存，确保面板编号正确。
+- **温度传感器修复**：在 Apple Silicon 上正确选择 CPU die 传感器（`PMU tdie*`）替代热敏校准传感器（`PMU tcal`）。显示 "Tdie 43°C"，带三级优先级回退。
+- **死代码清理**：删除 `tab_bar.rs`（114 行）、`animations.rs`；移除 `tachyonfx`、`tokio-stream`、`color-eyre` 和可选的 `serde` 依赖。
+- **依赖精简**：tokio 从 `"full"` 缩减为最小功能集；ratatui 从 `"all-widgets"` 缩减为默认功能。
+- **安全修复**：4 处不安全的 `unwrap()` 替换为安全回退模式。
+- **线程安全**：`PtySession` 的 `Drop` 实现在关闭面板时终止后台读取线程。
+- **内存缓存**：解析器和面板索引的 HashMap 现在缓存使用，仅在会话/标签变更时重建，而非每帧重建。
+- **搜索高亮**：匹配项在面板内容中显示为亮黄底深灰背景高亮。
+- **滚动计数器**：面板标题显示 `↑ N` 滚动行数而非仅箭头。
+- **分屏区域统一**：4 处分屏计算合并为 `compute_split_areas()` 函数——修复渲染/点击/调整大小时的截断与舍入不一致问题。
+- **模块提取**：`SysStats` → `stats.rs`，`ConfirmAction` → `confirmation.rs`（`app.rs` 减少约 80 行）。
+- **语义化状态颜色**：`set_status_success()`（绿色）、`set_status_error()`（红色）。
+- **Clippy 清理**：修复 13 个警告（`collapsible_if`、`redundant_closure`、`manual_clamp`、`unnecessary_cast` 等）。
+
 ### 0.2.5 — 复制/粘贴、全屏面板、面板跳转、全回滚搜索、配置文件
 
 - **复制/粘贴**：鼠标拖拽选择文本（反色高亮显示），松开后自动复制到系统剪贴板。`Ctrl+Shift+V` 将剪贴板内容粘贴到活动面板。
