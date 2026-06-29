@@ -30,6 +30,10 @@ pub struct PaneGrid<'a> {
     pub frame_count: u64,
     /// Mouse selection region: (row_min, col_min, row_max, col_max) relative to pane content
     pub selection: Option<(u16, u16, u16, u16)>,
+    /// Search match positions: (row, col_start, col_end) in absolute coordinates
+    pub search_matches: &'a [(u16, u16, u16)],
+    /// Whether search overlay is active (to enable match highlighting)
+    pub search_active: bool,
 }
 
 impl Widget for PaneGrid<'_> {
@@ -53,22 +57,7 @@ impl PaneGrid<'_> {
                 left,
                 right,
             } => {
-                let (left_area, right_area) = match direction {
-                    SplitDirection::Horizontal => {
-                        let left_w = (area.width as f32 * ratio) as u16;
-                        (
-                            Rect::new(area.x, area.y, left_w, area.height),
-                            Rect::new(area.x + left_w, area.y, area.width - left_w, area.height),
-                        )
-                    }
-                    SplitDirection::Vertical => {
-                        let left_h = (area.height as f32 * ratio) as u16;
-                        (
-                            Rect::new(area.x, area.y, area.width, left_h),
-                            Rect::new(area.x, area.y + left_h, area.width, area.height - left_h),
-                        )
-                    }
-                };
+                let (left_area, right_area) = crate::ui::compute_split_areas(area, *direction, *ratio);
 
                 let _is_resizing = self
                     .resize_pane
@@ -121,17 +110,19 @@ impl PaneGrid<'_> {
         let short_id = &id_str[..8.min(id_str.len())];
         let scroll_indicator = self.parsers.get(&pane_id).and_then(|parser| {
             parser.try_read().ok().and_then(|guard| {
-                if guard.screen().scrollback() > 0 {
-                    Some(" [↑]")
+                let sb = guard.screen().scrollback();
+                if sb > 0 {
+                    Some(format!(" ↑{}", sb))
                 } else {
                     None
                 }
             })
-        }).unwrap_or("");
+        });
+        let scroll_indicator_str = scroll_indicator.as_deref().unwrap_or("");
         let title = if pane_num > 0 {
-            format!(" {} [{}]{} ", short_id, pane_num, scroll_indicator)
+            format!(" {} [{}]{} ", short_id, pane_num, scroll_indicator_str)
         } else {
-            format!(" {}{} ", short_id, scroll_indicator)
+            format!(" {}{} ", short_id, scroll_indicator_str)
         };
 
         let block = Block::default()
@@ -175,7 +166,8 @@ impl PaneGrid<'_> {
 
         if let Some(parser) = self.parsers.get(&pane_id) {
             if let Ok(guard) = parser.try_read() {
-                self.render_screen(guard.screen(), content_inner, buf);
+                let scrollback = guard.screen().scrollback();
+                self.render_screen(guard.screen(), content_inner, buf, scrollback);
             }
         } else {
             for y in content_inner.y..content_inner.bottom() {
@@ -189,7 +181,7 @@ impl PaneGrid<'_> {
         }
     }
 
-    fn render_screen(&self, screen: &vt100::Screen, area: Rect, buf: &mut Buffer) {
+    fn render_screen(&self, screen: &vt100::Screen, area: Rect, buf: &mut Buffer, scrollback: usize) {
         let (screen_rows, screen_cols) = screen.size();
         let max_rows = screen_rows.min(area.height);
         let max_cols = screen_cols.min(area.width);
@@ -245,6 +237,18 @@ impl PaneGrid<'_> {
                                 style = Style::default().fg(bg).bg(fg);
                             }
                         }
+                        // Search match highlight
+                        if self.search_active {
+                            let abs_row = scrollback + row as usize;
+                            let is_match = self.search_matches.iter().any(|(mr, cs, ce)| {
+                                *mr == abs_row as u16 && col >= *cs && col < *ce
+                            });
+                            if is_match {
+                                style = Style::default()
+                                    .fg(Color::Indexed(226))
+                                    .bg(Color::Indexed(235));
+                            }
+                        }
                         cell.set_style(style);
                         let ch = vt_cell.contents().chars().next().unwrap_or(' ');
                         cell.set_char(ch);
@@ -262,12 +266,11 @@ impl PaneGrid<'_> {
 /// `my_char` is the primary char for this direction, `perp_char` is the char from the
 /// perpendicular direction (already drawn), `cross` is used when both meet.
 fn crossing_char(existing: char, my_char: char, perp_char: char, cross: char) -> char {
-    if existing == perp_char || existing == '│' || existing == '─'
-        || existing == '║' || existing == '═'
+    if (existing == perp_char || existing == '│' || existing == '─'
+        || existing == '║' || existing == '═')
+        && existing != ' '
     {
-        if existing != ' ' {
-            return cross;
-        }
+        return cross;
     }
     my_char
 }

@@ -15,7 +15,8 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use ratatui::Terminal;
 use tokio::sync::mpsc;
 
-use crate::app::{App, ConfirmAction, ResizeState};
+use crate::app::{App, ResizeState};
+use crate::confirmation::ConfirmAction;
 use crate::widgets::header::{header_area, HeaderBar};
 use crate::widgets::pane_grid::PaneGrid;
 use crate::widgets::status_bar::{status_bar_area, StatusBar};
@@ -23,8 +24,6 @@ use macterm_core::SplitNode;
 
 /// Run the main TUI event loop
 pub async fn run(mut app: App) -> Result<()> {
-    color_eyre::install().unwrap_or_default();
-
     // Setup terminal
     let mut stdout = std::io::stdout();
     crossterm::terminal::enable_raw_mode()?;
@@ -448,7 +447,7 @@ fn handle_event(app: &mut App, event: &Event) -> Result<()> {
             };
 
             match mouse.kind {
-                MouseEventKind::Down(btn) if btn == crossterm::event::MouseButton::Left => {
+                MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
                     let (border_hit, focus_hit) = {
                         let tab = app.workspace.active_tab();
                         let border = find_border_at_position(
@@ -487,14 +486,14 @@ fn handle_event(app: &mut App, event: &Event) -> Result<()> {
                         app.mouse_select_end = Some((click_x, click_y));
                     }
                 }
-                MouseEventKind::Drag(btn) if btn == crossterm::event::MouseButton::Left => {
+                MouseEventKind::Drag(crossterm::event::MouseButton::Left) => {
                     if matches!(app.resize_state, ResizeState::Dragging { .. }) {
                         app.update_resize_drag(click_x, click_y);
                     } else if app.mouse_select_start.is_some() {
                         app.mouse_select_end = Some((click_x, click_y));
                     }
                 }
-                MouseEventKind::Up(btn) if btn == crossterm::event::MouseButton::Left => {
+                MouseEventKind::Up(crossterm::event::MouseButton::Left) => {
                     if matches!(app.resize_state, ResizeState::Dragging { .. }) {
                         app.end_resize_drag();
                     } else if let (Some(start), Some(end)) = (app.mouse_select_start, app.mouse_select_end) {
@@ -532,7 +531,7 @@ fn find_pane_at_position(
     area: Rect,
     x: u16,
     y: u16,
-    pane_ids: &[macterm_core::PaneId],
+    _pane_ids: &[macterm_core::PaneId],
 ) -> Option<macterm_core::PaneId> {
     if !area.contains((x, y).into()) {
         return None;
@@ -546,30 +545,10 @@ fn find_pane_at_position(
             left,
             right,
         } => {
-            let (left_area, right_area) = match direction {
-                macterm_core::SplitDirection::Horizontal => {
-                    let left_w = (area.width as f32 * ratio) as u16;
-                    (
-                        Rect::new(area.x, area.y, left_w, area.height),
-                        Rect::new(area.x + left_w, area.y, area.width - left_w, area.height),
-                    )
-                }
-                macterm_core::SplitDirection::Vertical => {
-                    let left_h = (area.height as f32 * ratio) as u16;
-                    (
-                        Rect::new(area.x, area.y, area.width, left_h),
-                        Rect::new(
-                            area.x,
-                            area.y + left_h,
-                            area.width,
-                            area.height - left_h,
-                        ),
-                    )
-                }
-            };
+            let (left_area, right_area) = compute_split_areas(area, *direction, *ratio);
 
-            find_pane_at_position(left, left_area, x, y, pane_ids)
-                .or_else(|| find_pane_at_position(right, right_area, x, y, pane_ids))
+            find_pane_at_position(left, left_area, x, y, _pane_ids)
+                .or_else(|| find_pane_at_position(right, right_area, x, y, _pane_ids))
         }
     }
 }
@@ -630,7 +609,7 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
 
         if !entries.is_empty() {
             let lines: Vec<ratatui::text::Line> = entries.into_iter()
-                .map(|s| ratatui::text::Line::from(s))
+                .map(ratatui::text::Line::from)
                 .collect();
             frame.render_widget(Paragraph::new(ratatui::text::Text::from(lines)), inner);
         }
@@ -645,23 +624,7 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
     // Pane grid (terminal content)
     let tab = app.workspace.active_tab();
 
-    // Build parsers map from sessions
-    let parsers: std::collections::HashMap<
-        macterm_core::PaneId,
-        std::sync::Arc<std::sync::RwLock<vt100::Parser>>,
-    > = app
-        .sessions
-        .iter()
-        .map(|(id, session)| (*id, session.parser.clone()))
-        .collect();
-
-    let pane_ids_list = tab.pane_ids();
-    let pane_indices: std::collections::HashMap<_, _> = pane_ids_list
-        .iter()
-        .enumerate()
-        .map(|(i, id)| (*id, i + 1))
-        .collect();
-
+    // Use cached parsers map and pane_indices (refreshed on session/tab changes)
     let selection = match (app.mouse_select_start, app.mouse_select_end) {
         (Some(s), Some(e)) => Some((s.0, s.1, e.0, e.1)),
         _ => None,
@@ -677,16 +640,20 @@ fn render(app: &mut App, frame: &mut ratatui::Frame) {
         (&tab.root, content_area)
     };
 
+    let search_active = app.show_search && !app.search_matches.is_empty();
+
     let pane_grid = PaneGrid {
         root: pane_root,
         active_pane: tab.active_pane(),
-        parsers: &parsers,
+        parsers: &app.cached_parsers,
         area: pane_area,
 
         resize_pane,
-        pane_indices: &pane_indices,
+        pane_indices: &app.cached_pane_indices,
         frame_count: app.frame_count,
         selection,
+        search_matches: &app.search_matches,
+        search_active,
     };
     frame.render_widget(pane_grid, pane_area);
 
@@ -940,32 +907,7 @@ fn find_border_at_position(
             left,
             right,
         } => {
-            let (left_area, right_area) = match direction {
-                macterm_core::SplitDirection::Horizontal => {
-                    let left_w = (area.width as f32 * ratio).round() as u16;
-                    (
-                        Rect::new(area.x, area.y, left_w.min(area.width), area.height),
-                        Rect::new(
-                            area.x.saturating_add(left_w),
-                            area.y,
-                            area.width.saturating_sub(left_w),
-                            area.height,
-                        ),
-                    )
-                }
-                macterm_core::SplitDirection::Vertical => {
-                    let left_h = (area.height as f32 * ratio).round() as u16;
-                    (
-                        Rect::new(area.x, area.y, area.width, left_h.min(area.height)),
-                        Rect::new(
-                            area.x,
-                            area.y.saturating_add(left_h),
-                            area.width,
-                            area.height.saturating_sub(left_h),
-                        ),
-                    )
-                }
-            };
+            let (left_area, right_area) = compute_split_areas(area, *direction, *ratio);
 
             // Check if click is on this split's border (tolerance of 1 cell)
             let on_border = match direction {
@@ -1015,24 +957,40 @@ fn collect_rects(node: &macterm_core::SplitNode, area: Rect, rects: &mut std::co
             rects.insert(*pane_id, area);
         }
         macterm_core::SplitNode::Split { direction, ratio, left, right } => {
-            let (left_area, right_area) = match direction {
-                macterm_core::SplitDirection::Horizontal => {
-                    let left_w = (area.width as f32 * ratio).round() as u16;
-                    (
-                        Rect::new(area.x, area.y, left_w.min(area.width), area.height),
-                        Rect::new(area.x.saturating_add(left_w), area.y, area.width.saturating_sub(left_w), area.height),
-                    )
-                }
-                macterm_core::SplitDirection::Vertical => {
-                    let left_h = (area.height as f32 * ratio).round() as u16;
-                    (
-                        Rect::new(area.x, area.y, area.width, left_h.min(area.height)),
-                        Rect::new(area.x, area.y.saturating_add(left_h), area.width, area.height.saturating_sub(left_h)),
-                    )
-                }
-            };
+            let (left_area, right_area) = compute_split_areas(area, *direction, *ratio);
             collect_rects(left, left_area, rects);
             collect_rects(right, right_area, rects);
+        }
+    }
+}
+
+/// Split an area into left/right (Horizontal) or top/bottom (Vertical) halves
+/// given a ratio. Always uses `.round()` and `saturating_sub` for consistency.
+pub fn compute_split_areas(area: Rect, direction: macterm_core::SplitDirection, ratio: f32) -> (Rect, Rect) {
+    match direction {
+        macterm_core::SplitDirection::Horizontal => {
+            let left_w = (area.width as f32 * ratio).round() as u16;
+            (
+                Rect::new(area.x, area.y, left_w.min(area.width), area.height),
+                Rect::new(
+                    area.x.saturating_add(left_w),
+                    area.y,
+                    area.width.saturating_sub(left_w),
+                    area.height,
+                ),
+            )
+        }
+        macterm_core::SplitDirection::Vertical => {
+            let left_h = (area.height as f32 * ratio).round() as u16;
+            (
+                Rect::new(area.x, area.y, area.width, left_h.min(area.height)),
+                Rect::new(
+                    area.x,
+                    area.y.saturating_add(left_h),
+                    area.width,
+                    area.height.saturating_sub(left_h),
+                ),
+            )
         }
     }
 }
