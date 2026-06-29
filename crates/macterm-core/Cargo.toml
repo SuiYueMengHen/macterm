@@ -4,8 +4,4 @@ version = "0.2.5"
 edition = "2021"
 
 [dependencies]
-serde = { version = "1", features = ["derive"], optional = true }
 uuid = { version = "1", features = ["v4"] }
-
-[features]
-serde = ["dep:serde"]
