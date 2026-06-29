@@ -38,6 +38,9 @@ pub async fn run(mut app: App) -> Result<()> {
         app.resize_active_panes();
     }
 
+    // Populate the parser/pane-index caches before first render
+    app.refresh_caches();
+
     // Async event stream + tick interval
     let mut events = EventStream::new();
     let tick_rate = Duration::from_millis(16); // ~60fps
@@ -302,6 +305,7 @@ fn handle_event(app: &mut App, event: &Event) -> Result<()> {
                     app.workspace.switch_to_tab(idx);
                     app.ensure_tab_visible();
                     app.resize_active_panes();
+                    app.refresh_caches();
                 }
 
                 // Next/prev tab (with auto-scroll)
@@ -309,11 +313,13 @@ fn handle_event(app: &mut App, event: &Event) -> Result<()> {
                     app.workspace.next_tab();
                     app.ensure_tab_visible();
                     app.resize_active_panes();
+                    app.refresh_caches();
                 }
                 KeyCode::Left if key.modifiers == KeyModifiers::ALT => {
                     app.workspace.prev_tab();
                     app.ensure_tab_visible();
                     app.resize_active_panes();
+                    app.refresh_caches();
                 }
 
                 // Focus navigation: Ctrl+arrows to move between panes

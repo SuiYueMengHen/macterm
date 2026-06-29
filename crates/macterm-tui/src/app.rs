@@ -212,32 +212,71 @@ impl App {
         }
     }
 
-    /// Read the hottest temperature sensor from sysinfo Components.
-    /// Returns (temp_celsius, short_label).
+    /// Read CPU temperature via sysinfo Components.
+    /// On Apple Silicon, prefers "PMU tdie*" CPU-die sensors;
+    /// on Intel Macs, prefers labels containing "CPU"/"die".
+    /// Returns (temp_celsius, short_label). Returns (None, "") when no valid sensor is found.
     fn read_hottest_temperature(components: &mut sysinfo::Components) -> (Option<f32>, String) {
         components.refresh(false);
-        let mut hottest: Option<(f32, &str)> = None;
-        for c in components.list() {
-            if let Some(t) = c.temperature() {
-                if t.is_finite() {
-                    let label = c.label();
-                    let is_preferred = hottest.is_none()
-                        || t > hottest.map(|(temp, _)| temp).unwrap_or(f32::MIN)
-                        || (t == hottest.map(|(temp, _)| temp).unwrap_or(f32::MIN) && label.contains("CPU"));
-                    if is_preferred {
-                        hottest = Some((t, label));
-                    }
-                }
-            }
+
+        // Collect all valid sensors with finite temperature
+        let all: Vec<(f32, &str)> = components.list().iter()
+            .filter_map(|c| {
+                let t = c.temperature()?;
+                t.is_finite().then_some((t, c.label()))
+            })
+            .collect();
+
+        if all.is_empty() {
+            return (None, String::new());
         }
-        if let Some((t, label)) = hottest {
-            let short = label
-                .split(|c: char| !c.is_alphanumeric() && c != '_')
+
+        // Sensors to exclude: battery, storage, thermal calibration
+        let excluded = |l: &str| {
+            let lower = l.to_lowercase();
+            lower.contains("battery")
+                || lower.contains("gas gauge")
+                || lower.contains("nand")
+                || lower.contains("tcal")
+        };
+
+        // Tier 1: CPU die sensors (tdie/die/CPU/core)
+        let tier1: Vec<&(f32, &str)> = all.iter()
+            .filter(|(_, l)| {
+                let lower = l.to_lowercase();
+                !excluded(l) && (lower.contains("tdie") || lower.contains("die") || lower.contains("cpu"))
+            })
+            .collect();
+        if !tier1.is_empty() {
+            let (t, _) = tier1.into_iter().max_by(|a, b| a.0.partial_cmp(&b.0).unwrap()).unwrap();
+            return (Some(*t), "Tdie".to_string());
+        }
+
+        // Tier 2: thermal point sensors (TP* on Apple Silicon)
+        let tier2: Vec<&(f32, &str)> = all.iter()
+            .filter(|(_, l)| !excluded(l) && l.contains("TP"))
+            .collect();
+        if !tier2.is_empty() {
+            let (t, _) = tier2.into_iter().max_by(|a, b| a.0.partial_cmp(&b.0).unwrap()).unwrap();
+            return (Some(*t), "TP".to_string());
+        }
+
+        // Tier 3: hottest remaining sensor
+        if let Some((t, label)) = all.iter()
+            .filter(|(_, l)| !excluded(l))
+            .max_by(|a, b| a.0.partial_cmp(&b.0).unwrap())
+        {
+            // Clean up label for display
+            let short = label.split(|c: char| !c.is_alphanumeric() && c != '_')
                 .next()
                 .filter(|s| !s.is_empty())
-                .unwrap_or(label);
-            let short = if short.len() > 12 { &short[..12] } else { short };
-            (Some(t), short.to_string())
+                .and_then(|s| {
+                    let first = s.chars().next()?.to_uppercase().to_string();
+                    Some(format!("{}{}", first, &s[1..]))
+                })
+                .unwrap_or_else(|| label.to_string());
+            let short: String = short.chars().take(6).collect();
+            (Some(*t), short)
         } else {
             (None, String::new())
         }
