@@ -22,8 +22,7 @@ pub struct PtySession {
     pub writer: Box<dyn std::io::Write + Send>,
     pub reader: Option<tokio::task::JoinHandle<()>>,
     pub parser: Arc<RwLock<vt100::Parser>>,
-    #[allow(dead_code)]
-    parser_tx: mpsc::UnboundedSender<PtyEvent>,
+    _parser_tx: mpsc::UnboundedSender<PtyEvent>,
 }
 
 impl PtySession {
@@ -34,7 +33,6 @@ impl PtySession {
         rows: u16,
         scrollback_lines: usize,
         shell_path: Option<&str>,
-        #[allow(dead_code)]
         parser_tx: mpsc::UnboundedSender<PtyEvent>,
     ) -> Result<Self> {
         let pty_system = NativePtySystem::default();
@@ -138,7 +136,7 @@ impl PtySession {
             writer,
             reader: Some(reader_handle),
             parser,
-            parser_tx,
+            _parser_tx: parser_tx,
         })
     }
 
@@ -165,5 +163,13 @@ impl PtySession {
             pixel_height: 0,
         })?;
         Ok(())
+    }
+}
+
+impl Drop for PtySession {
+    fn drop(&mut self) {
+        if let Some(handle) = self.reader.take() {
+            handle.abort();
+        }
     }
 }
