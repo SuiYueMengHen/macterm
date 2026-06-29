@@ -2,28 +2,13 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use crate::config::Config;
+use crate::confirmation::ConfirmAction;
 use crate::pty::{PtyEvent, PtySession};
+use crate::stats::SysStats;
 use macterm_core::*;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
 use tokio::sync::mpsc;
-
-/// Cached system statistics for the header bar
-#[derive(Debug, Clone)]
-pub struct SysStats {
-    pub cpu_pct: f32,
-    pub mem_used_gb: f32,
-    pub mem_total_gb: f32,
-    pub cpu_brand: String,
-}
-
-/// Pending confirmation action (for close pane / quit confirmation dialogs)
-#[derive(Debug, Clone, PartialEq)]
-pub enum ConfirmAction {
-    None,
-    ClosePane,
-    Quit,
-}
 
 /// Tracks an active drag-to-resize operation on a split border
 #[derive(Debug, Clone, PartialEq)]
@@ -49,6 +34,10 @@ pub struct App {
     pub workspace: Workspace,
     /// PTY sessions keyed by pane ID
     pub sessions: HashMap<PaneId, PtySession>,
+    /// Cached parsers HashMap: rebuilt when sessions change
+    pub cached_parsers: HashMap<PaneId, std::sync::Arc<std::sync::RwLock<vt100::Parser>>>,
+    /// Cached pane_indices HashMap: rebuilt when tab structure changes
+    pub cached_pane_indices: HashMap<PaneId, usize>,
     /// Event receiver for PTY events
     pub pty_rx: mpsc::UnboundedReceiver<PtyEvent>,
     /// Whether the app is running
@@ -111,6 +100,8 @@ pub struct App {
     pub show_pane_jump: bool,
     /// System monitor for CPU/memory stats collection
     sysmon: sysinfo::System,
+    /// System temperature sensors (sysinfo Components)
+    components: sysinfo::Components,
     /// Cached system stats (refreshed periodically)
     pub stats: SysStats,
     /// Tick counter for stats refresh (~every 120 frames)
@@ -148,17 +139,23 @@ impl App {
         let cpu_brand = sysmon.cpus().first()
             .map(|c| c.brand().to_string())
             .unwrap_or_default();
+        let mut components = sysinfo::Components::new_with_refreshed_list();
+        let (temp_c, temp_label) = Self::read_hottest_temperature(&mut components);
         let stats = SysStats {
             cpu_pct: sysmon.global_cpu_usage(),
             mem_used_gb: sysmon.used_memory() as f32 / 1073741824.0,
             mem_total_gb: sysmon.total_memory() as f32 / 1073741824.0,
             cpu_brand,
+            temp_c,
+            temp_label,
         };
 
         (
             Self {
                 workspace,
                 sessions,
+                cached_parsers: HashMap::new(),
+                cached_pane_indices: HashMap::new(),
                 pty_rx,
                 config,
                 running: true,
@@ -190,6 +187,7 @@ impl App {
                 fullscreen_pane_index: 0,
                 show_pane_jump: false,
                 sysmon,
+                components,
                 stats,
                 stats_tick: 0,
             },
@@ -214,13 +212,48 @@ impl App {
         }
     }
 
-    /// Refresh CPU/memory stats via sysinfo
+    /// Read the hottest temperature sensor from sysinfo Components.
+    /// Returns (temp_celsius, short_label).
+    fn read_hottest_temperature(components: &mut sysinfo::Components) -> (Option<f32>, String) {
+        components.refresh(false);
+        let mut hottest: Option<(f32, &str)> = None;
+        for c in components.list() {
+            if let Some(t) = c.temperature() {
+                if t.is_finite() {
+                    let label = c.label();
+                    let is_preferred = hottest.is_none()
+                        || t > hottest.map(|(temp, _)| temp).unwrap_or(f32::MIN)
+                        || (t == hottest.map(|(temp, _)| temp).unwrap_or(f32::MIN) && label.contains("CPU"));
+                    if is_preferred {
+                        hottest = Some((t, label));
+                    }
+                }
+            }
+        }
+        if let Some((t, label)) = hottest {
+            let short = label
+                .split(|c: char| !c.is_alphanumeric() && c != '_')
+                .next()
+                .filter(|s| !s.is_empty())
+                .unwrap_or(label);
+            let short = if short.len() > 12 { &short[..12] } else { short };
+            (Some(t), short.to_string())
+        } else {
+            (None, String::new())
+        }
+    }
+
+    /// Refresh CPU/memory/temperature stats via sysinfo
     fn refresh_stats(&mut self) {
         self.sysmon.refresh_cpu_usage();
         self.sysmon.refresh_memory();
         self.stats.cpu_pct = self.sysmon.global_cpu_usage();
         self.stats.mem_used_gb = self.sysmon.used_memory() as f32 / 1073741824.0;
         self.stats.mem_total_gb = self.sysmon.total_memory() as f32 / 1073741824.0;
+
+        let (temp, label) = Self::read_hottest_temperature(&mut self.components);
+        self.stats.temp_c = temp;
+        self.stats.temp_label = label;
     }
 
     /// Set a status message with auto-fade timing (default amber color)
@@ -235,6 +268,20 @@ impl App {
         self.status_message = Some(msg);
         self.status_message_frame = self.frame_count;
         self.status_message_color = color;
+    }
+
+    /// Set a status message indicating success (green color)
+    pub fn set_status_success(&mut self, msg: impl Into<String>) {
+        self.status_message = Some(msg.into());
+        self.status_message_frame = self.frame_count;
+        self.status_message_color = Color::Green;
+    }
+
+    /// Set a status message indicating an error (red color)
+    pub fn set_status_error(&mut self, msg: impl Into<String>) {
+        self.status_message = Some(msg.into());
+        self.status_message_frame = self.frame_count;
+        self.status_message_color = Color::Red;
     }
 
     /// Handle PTY events from background reader threads
@@ -253,7 +300,11 @@ impl App {
                 }
                 PtyEvent::Exited(pane_id, code) => {
                     log::info!("Pane {} exited with code {}", pane_id, code);
-                    self.set_status_message(format!("Pane {} exited ({})", pane_id, code));
+                    if code == 0 {
+                        self.set_status_success(format!("Pane {} exited ({})", pane_id, code));
+                    } else {
+                        self.set_status_error(format!("Pane {} exited ({})", pane_id, code));
+                    }
                 }
             }
         }
@@ -288,6 +339,25 @@ impl App {
                 let _ = session.resize(pty_cols, pty_rows);
             }
         }
+    }
+
+    /// Rebuild the parsers and pane_indices caches
+    pub fn refresh_caches(&mut self) {
+        // Rebuild parsers map from current sessions
+        self.cached_parsers = self
+            .sessions
+            .iter()
+            .map(|(id, session)| (*id, session.parser.clone()))
+            .collect();
+
+        // Rebuild pane_indices map from active tab's pane order
+        let tab = self.workspace.active_tab();
+        let pane_ids = tab.pane_ids();
+        self.cached_pane_indices = pane_ids
+            .iter()
+            .enumerate()
+            .map(|(i, id)| (*id, i + 1))
+            .collect();
     }
 
     /// Write input to the active pane
@@ -348,6 +418,7 @@ impl App {
         }
         // Immediately resize all panes to their actual split-tree dimensions
         self.resize_active_panes();
+        self.refresh_caches();
     }
 
     /// Close the active pane
@@ -371,6 +442,7 @@ impl App {
             // Can't remove the last pane
             tab.root = old_root;
         }
+        self.refresh_caches();
     }
 
     /// Switch focus to the next pane in order
@@ -412,6 +484,7 @@ impl App {
             tab.root = SplitNode::Leaf(active);
         }
         self.resize_active_panes();
+        self.refresh_caches();
     }
 
     /// Scroll the active pane by a delta (positive = up/backward)
@@ -442,6 +515,7 @@ impl App {
             return;
         }
         self.resize_active_panes();
+        self.refresh_caches();
     }
 
     /// Copy selected text to clipboard. Returns true if copied.
@@ -472,7 +546,7 @@ impl App {
         if let Some(text) = text {
             if let Some(ref mut cb) = self.clipboard {
                 if cb.set_text(text).is_ok() {
-                    self.set_status_message("Copied".to_string());
+                    self.set_status_success("Copied".to_string());
                     return true;
                 }
             }
@@ -494,7 +568,7 @@ impl App {
         self.fullscreen_pane_mode = !self.fullscreen_pane_mode;
         if self.fullscreen_pane_mode {
             self.fullscreen_pane_index = 0;
-            self.set_status_message("Fullscreen pane mode".to_string());
+            self.set_status_success("Fullscreen pane mode".to_string());
         } else {
             self.set_status_message("Split pane mode".to_string());
         }
@@ -622,7 +696,7 @@ impl App {
         let tab_count = self.workspace.tab_count().max(1);
         let active_tab = self.workspace.active_tab;
         let avail_w = self.area.width.max(20) as usize;
-        let tab_width = (avail_w / tab_count).max(14).min(32);
+        let tab_width = (avail_w / tab_count).clamp(14, 32);
         if tab_width == 0 {
             return;
         }
@@ -650,7 +724,7 @@ impl App {
             "status" => self.show_status_bar = !self.show_status_bar,
             "quit" => self.running = false,
             _ => {
-                self.set_status_message(format!("Unknown command: {}", cmd));
+                self.set_status_error(format!("Unknown command: {}", cmd));
             }
         }
     }
@@ -707,7 +781,7 @@ impl App {
                 parser.set_scrollback(0);
                 let screen = parser.screen();
                 for rel_row in 0..rows {
-                    let abs_row = rel_row as u16;
+                    let abs_row = rel_row;
                     let mut col = 0u16;
                     while col < cols {
                         if let Some(cell) = screen.cell(rel_row, col) {
