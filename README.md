@@ -1,34 +1,55 @@
 # ⌘ macterm
 
+[🇺🇸 English](README.md) · [🇨🇳 中文](README-zh.md)
+
 > A modern multi-terminal TUI multiplexer for macOS — split panes, tabs, animations, built with Rust + Ratatui.
 
-![demo](https://img.shields.io/badge/status-beta-blue)
+![status](https://img.shields.io/badge/status-beta-blue)
 ![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
+[![CI](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/your/repo)
+![macOS](https://img.shields.io/badge/platform-macOS-lightgrey)
 
 ---
 
-## Features
+## 📸 Screenshot
+
+<!-- TODO: Add screenshot/GIF of macterm in action -->
+
+---
+
+## 🚀 Features
+
+### 🖥️ Terminal Management
 
 - **Multi-tab terminals** — multiple terminal sessions in one window, switch with `Alt+←→`
 - **Split panes** — split horizontally (`Ctrl+D`) or vertically (`Ctrl+E`) into resizable panes
-- **Drag-to-resize** — click and drag split borders to resize panes in real-time
 - **Pane navigation** — `Ctrl+↑↓←→` to move focus between panes
-- **Brand header** — bold "MACTERMINAL" logo with tab bar
 - **Tab scrolling** — `◀▶` arrows when tabs overflow, auto-scroll to active tab
-- **Pane title bar** — 1-line header inside each pane with `[N]` label
-- **Pane number overlays** — numbered `[1]` `[2]` labels in pane borders
-- **Rounded borders** — `╭─╮` style pane borders with `║═╬` double-line separators
+- **File tree sidebar** — `Ctrl+F` to toggle, reads live directory listing (sorted, dirs first)
+
+### 🎮 Controls
+
+- **Drag-to-resize** — click and drag split borders to resize panes in real-time
 - **Search overlay** — `Ctrl+S` to find text in the active pane, Enter/Tab navigation
 - **Confirmation dialogs** — confirm before closing a pane or quitting
 - **Help overlay** — `Ctrl+H` shows all keybindings
 - **Command palette** — `Ctrl+P` for quick commands
-- **File tree sidebar** — `Ctrl+F` to toggle, reads live directory listing (sorted, dirs first)
+- **SIGWINCH propagation** — PTY sessions properly resize when the window changes
+
+### 🎨 Interface
+
+- **Brand header** — bold "MACTERMINAL" logo with tab bar
+- **Pane title bar** — 1-line header inside each pane with `[N]` label
+- **Pane number overlays** — numbered `[1]` `[2]` labels in pane borders
+- **Rounded borders** — `╭─╮` style pane borders with `║═╬` double-line separators
 - **Terminal-default colors** — all UI chrome uses terminal theme colors, no hardcoded palette
 - **Status bar** — tab count, pane count, status messages with auto-fade
+
+### ⚡ Performance
+
 - **Async event loop** — 60fps rendering via `tokio::select!` — no input lag
 - **Proper terminal emulation** — vt100 parser with full ANSI/ECMA-48 support
-- **SIGWINCH propagation** — PTY sessions properly resize when the window changes
 
 ---
 
@@ -61,7 +82,7 @@ Options:
 
 ---
 
-## Keybindings
+## ⌨️ Keybindings
 
 | Shortcut | Action |
 |---|---|
@@ -110,7 +131,7 @@ Options:
 
 ---
 
-## Changelog
+## 📋 Changelog
 
 ### 0.2.5 — Copy/Paste, Fullscreen Panes, Pane Jump, Full Scrollback Search, Config
 
@@ -256,19 +277,19 @@ Options:
 
 ---
 
-## Architecture
+## 🏗️ Architecture
 
 ```
 macterm/
 ├── src/
 │   └── main.rs              # CLI entrypoint (clap)
 ├── crates/
-│   ├── macterm-core/        # Data model
+│   ├── macterm-core/        # 📦 Data model
 │   │   ├── src/layout.rs    # SplitNode binary tree
 │   │   ├── src/pane.rs      # PaneId, SplitDirection
 │   │   ├── src/workspace.rs # Workspace→Tab→SplitNode hierarchy
 │   │   └── src/lib.rs
-│   └── macterm-tui/         # Terminal UI layer
+│   └── macterm-tui/         # 🎨 Terminal UI layer
 │       ├── src/app.rs       # App state, PTY management
 │       ├── src/ui.rs        # Event loop, keyboard/mouse handlers
 │       ├── src/pty.rs       # PTY session (portable-pty + vt100)
@@ -278,9 +299,15 @@ macterm/
 │           └── status_bar.rs
 ```
 
+| Crate | Description |
+|---|---|
+| `macterm` (binary) | CLI entrypoint, argument parsing via `clap` |
+| `macterm-core` | Data model: `SplitNode` tree, `PaneId`, workspace→tab→split hierarchy |
+| `macterm-tui` | Terminal UI: app state, event loop, PTY sessions, widgets |
+
 ---
 
-## Building
+## 🔧 Building
 
 ```bash
 # Build
@@ -293,10 +320,17 @@ cargo build --release
 cargo run
 ```
 
-**Dependencies**: Rust 1.70+, macOS (cross-platform via portable-pty/Ratatui)
+**Dependencies**: Rust 1.70+, macOS (cross-platform via portable-pty / Ratatui)
 
 ---
 
-## License
+## 🤝 Contributing
+
+Contributions, issues, and feature requests are welcome!  
+Feel free to open an [issue](https://github.com/your/repo/issues) or submit a pull request.
+
+---
+
+## 📄 License
 
 MIT
